@@ -16,6 +16,7 @@ import {
   validateCable,
   validateRackPosition
 } from "../../packages/dcim-domain/dist/index.js";
+import { shellNavigation, workspacePanels } from "../../packages/ui/dist/index.js";
 import {
   canAllocateChildPrefix,
   createVlanDirectory,
@@ -185,4 +186,10 @@ test("dcim scaffolds validate rack occupancy and cable endpoints", () => {
   assert.equal(occupancyDecision.valid, true);
   assert.equal(cableValidation.valid, true);
   assert.equal(rackDirectory.get("rack-1")?.name, "R1");
+});
+
+test("ui scaffolds expose navigation and workspace panels", () => {
+  assert.equal(shellNavigation.length >= 6, true);
+  assert.equal(workspacePanels.some((panel) => panel.id === "dcim"), true);
+  assert.equal(shellNavigation[0]?.label, "Overview");
 });
