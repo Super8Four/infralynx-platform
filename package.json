@@ -1,0 +1,19 @@
+{
+  "name": "infralynx-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "InfraLynx platform monorepo foundation",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "node scripts/clean.mjs",
+    "typecheck": "tsc -b tsconfig.json --pretty false"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
