@@ -23,6 +23,8 @@ const paths = [
   "packages/domain-core/tsconfig.tsbuildinfo",
   "packages/ipam-domain/dist",
   "packages/ipam-domain/tsconfig.tsbuildinfo",
+  "packages/network-domain/dist",
+  "packages/network-domain/tsconfig.tsbuildinfo",
   "packages/ui/dist",
   "packages/ui/tsconfig.tsbuildinfo",
   "packages/shared/dist",

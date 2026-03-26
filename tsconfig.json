@@ -9,6 +9,7 @@
     { "path": "./packages/dcim-domain" },
     { "path": "./packages/domain-core" },
     { "path": "./packages/ipam-domain" },
+    { "path": "./packages/network-domain" },
     { "path": "./packages/ui" },
     { "path": "./packages/shared" },
     { "path": "./apps/api" },

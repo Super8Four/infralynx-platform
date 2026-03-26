@@ -12,6 +12,7 @@ export interface Vrf {
 export interface Prefix {
   readonly id: string;
   readonly vrfId: string | null;
+  readonly parentPrefixId: string | null;
   readonly cidr: string;
   readonly family: AddressFamily;
   readonly status: "active" | "reserved" | "deprecated";
@@ -28,6 +29,7 @@ export interface IpAddress {
   readonly status: "active" | "reserved" | "deprecated";
   readonly role: "loopback" | "primary" | "secondary" | "vip";
   readonly prefixId: string | null;
+  readonly interfaceId: string | null;
 }
 
 export interface Vlan {
@@ -36,6 +38,7 @@ export interface Vlan {
   readonly name: string;
   readonly status: "active" | "reserved" | "deprecated";
   readonly tenantId: string | null;
+  readonly interfaceIds: readonly string[];
 }
 
 export interface AllocationRequest {
