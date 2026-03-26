@@ -8,6 +8,9 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 - `apps/api` for the HTTP API service
 - `apps/worker` for background jobs and asynchronous processing
 - `packages/config` for shared configuration helpers
+- `packages/core-domain` for core platform entities and RBAC-friendly contracts
+- `packages/auth` for authentication sessions and authorization policy scaffolds
+- `packages/audit` for audit record contracts and append-only event helpers
 - `packages/db-abstraction` for database capability mapping and migration contracts
 - `packages/domain-core` for core platform contracts and boundaries
 - `packages/shared` for cross-cutting utilities that are safe to reuse
