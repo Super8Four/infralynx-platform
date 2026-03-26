@@ -6,6 +6,7 @@
     { "path": "./packages/auth" },
     { "path": "./packages/audit" },
     { "path": "./packages/db-abstraction" },
+    { "path": "./packages/dcim-domain" },
     { "path": "./packages/domain-core" },
     { "path": "./packages/ipam-domain" },
     { "path": "./packages/shared" },

@@ -11,6 +11,12 @@ import {
 import { createSession, resolveAccessDecision } from "../../packages/auth/dist/index.js";
 import { createAuditRecord, summarizeAuditRecord } from "../../packages/audit/dist/index.js";
 import {
+  canOccupyRackPosition,
+  createRackDirectory,
+  validateCable,
+  validateRackPosition
+} from "../../packages/dcim-domain/dist/index.js";
+import {
   canAllocateChildPrefix,
   createVlanDirectory,
   isValidRouteDistinguisher,
@@ -134,4 +140,49 @@ test("ipam scaffolds validate basic VRF, prefix, IP, and VLAN rules", () => {
   assert.equal(vlanDirectory.get(120)?.name, "Servers");
   assert.equal(isValidVlanId(4094), true);
   assert.equal(isValidRouteDistinguisher("65000:10"), true);
+});
+
+test("dcim scaffolds validate rack occupancy and cable endpoints", () => {
+  const rack = {
+    id: "rack-1",
+    siteId: "site-1",
+    name: "R1",
+    totalUnits: 42
+  };
+  const rackValidation = validateRackPosition(rack, {
+    rackId: "rack-1",
+    face: "front",
+    startingUnit: 10,
+    heightUnits: 2
+  });
+  const occupancyDecision = canOccupyRackPosition(
+    rack,
+    {
+      rackId: "rack-1",
+      face: "front",
+      startingUnit: 10,
+      heightUnits: 2
+    },
+    [
+      {
+        rackId: "rack-1",
+        face: "rear",
+        startingUnit: 10,
+        heightUnits: 2
+      }
+    ]
+  );
+  const cableValidation = validateCable({
+    id: "cable-1",
+    kind: "data",
+    aSide: { deviceId: "device-1", portId: "eth0" },
+    zSide: { deviceId: "device-2", portId: "eth1" },
+    status: "connected"
+  });
+  const rackDirectory = createRackDirectory([rack]);
+
+  assert.equal(rackValidation.valid, true);
+  assert.equal(occupancyDecision.valid, true);
+  assert.equal(cableValidation.valid, true);
+  assert.equal(rackDirectory.get("rack-1")?.name, "R1");
 });

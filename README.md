@@ -12,6 +12,7 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 - `packages/auth` for authentication sessions and authorization policy scaffolds
 - `packages/audit` for audit record contracts and append-only event helpers
 - `packages/db-abstraction` for database capability mapping and migration contracts
+- `packages/dcim-domain` for physical infrastructure, rack, interface, power, and cabling contracts
 - `packages/domain-core` for core platform contracts and boundaries
 - `packages/ipam-domain` for VRF, prefix, IP address, VLAN, and allocation contracts
 - `packages/shared` for cross-cutting utilities that are safe to reuse
