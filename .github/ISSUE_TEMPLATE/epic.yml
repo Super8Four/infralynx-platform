@@ -1,0 +1,32 @@
+name: Epic
+description: Track a large multi-step initiative.
+title: "[Epic]: "
+labels:
+  - type:feature
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+    validations:
+      required: true
+  - type: textarea
+    id: repositories
+    attributes:
+      label: Repositories Affected
+      description: List all involved repositories.
+    validations:
+      required: true
+  - type: textarea
+    id: child_work
+    attributes:
+      label: Child Work
+      description: Link chunks, issues, or ADRs.
+    validations:
+      required: true
+  - type: textarea
+    id: exit_criteria
+    attributes:
+      label: Exit Criteria
+    validations:
+      required: true

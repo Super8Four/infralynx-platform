@@ -1,0 +1,34 @@
+name: Task
+description: Define a bounded engineering, governance, or documentation task.
+title: "[Task]: "
+labels:
+  - type:task
+body:
+  - type: dropdown
+    id: repository
+    attributes:
+      label: Repository
+      options:
+        - infralynx-platform
+        - infralynx-docs
+        - infralynx-infra
+        - infralynx-standards
+        - infralynx-design
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+    validations:
+      required: true
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks or Assumptions

@@ -1,0 +1,30 @@
+name: Docs
+description: Request or track documentation work.
+title: "[Docs]: "
+labels:
+  - type:docs
+body:
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Audience
+      options:
+        - product
+        - engineering
+        - operations
+        - contributors
+        - api consumers
+    validations:
+      required: true
+  - type: textarea
+    id: gap
+    attributes:
+      label: Documentation Gap
+    validations:
+      required: true
+  - type: textarea
+    id: update
+    attributes:
+      label: Expected Update
+    validations:
+      required: true

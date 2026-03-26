@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: InfraLynx Support Process
+    url: https://example.invalid/infralynx/support
+    about: Use SUPPORT.md and the repository issue templates for standard requests.
+  - name: InfraLynx Security Reporting
+    url: https://example.invalid/infralynx/security
+    about: Do not file sensitive reports publicly. Follow SECURITY.md.

@@ -1,0 +1,47 @@
+name: Feature
+description: Propose a new feature or planned capability.
+title: "[Feature]: "
+labels:
+  - type:feature
+body:
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Domain
+      options:
+        - core
+        - dcim
+        - ipam
+        - networking
+        - virtualization
+        - ui
+        - api
+        - db
+        - ci-cd
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: Describe the desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Define what is included and excluded.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link ADRs, issues, milestones, or blocked work.

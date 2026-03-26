@@ -1,0 +1,6 @@
+# Default ownership for InfraLynx shared standards
+* @Super8Four
+
+/.github/ @Super8Four
+/governance/ @Super8Four
+/templates/ @Super8Four

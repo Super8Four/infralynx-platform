@@ -1,0 +1,38 @@
+name: Security
+description: Track a security issue that is safe for internal handling.
+title: "[Security]: "
+labels:
+  - type:security
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include sensitive exploit details in a publicly visible issue.
+        Follow SECURITY.md for private reporting and triage.
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - critical
+        - high
+        - medium
+        - low
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: affected_area
+    attributes:
+      label: Affected Area
+    validations:
+      required: true
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Current Mitigation
