@@ -1,3 +1,5 @@
 # MariaDB Migrations
 
-Reserved for MariaDB migration scripts and execution support files.
+This directory contains MariaDB-specific migration variants aligned to the shared InfraLynx migration version stream.
+
+Schema changes must be written defensively where DDL rollback or JSON semantics differ from the PostgreSQL reference engine.

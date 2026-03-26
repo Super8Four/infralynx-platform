@@ -1,9 +1,16 @@
-# Migrations
+# Database Migrations
 
-This directory will hold engine-aware migration assets for:
+InfraLynx stores schema changes per supported engine so version intent stays aligned even when SQL differs.
 
-- PostgreSQL
-- Microsoft SQL Server
-- MariaDB
+## Engine Directories
 
-Migration implementation is deferred until the database compatibility foundation chunk.
+- `migrations/postgres`
+- `migrations/mssql`
+- `migrations/mariadb`
+
+## Rules
+
+- version numbers must stay aligned across engines
+- reference behavior is designed against PostgreSQL first
+- engine-specific SQL must be isolated to engine directories
+- unsupported features must be documented before they are used

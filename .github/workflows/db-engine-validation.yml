@@ -1,0 +1,46 @@
+name: Database Engine Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "packages/db-abstraction/**"
+      - "migrations/**"
+      - ".github/workflows/db-engine-validation.yml"
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "packages/db-abstraction/**"
+      - "migrations/**"
+      - ".github/workflows/db-engine-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-engine-layout:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [postgres, mssql, mariadb]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate abstraction package
+        run: npm run db:validate
+
+      - name: Confirm engine directory
+        run: test -d migrations/${{ matrix.engine }}
