@@ -40,6 +40,9 @@ export interface Interface {
   readonly name: string;
   readonly kind: InterfaceKind;
   readonly enabled: boolean;
+  readonly vlanIds: readonly string[];
+  readonly ipAddressIds: readonly string[];
+  readonly cableId: string | null;
 }
 
 export interface PowerPort {
@@ -51,7 +54,7 @@ export interface PowerPort {
 
 export interface CableEndpoint {
   readonly deviceId: string;
-  readonly portId: string;
+  readonly interfaceId: string;
 }
 
 export interface Cable {
@@ -120,8 +123,11 @@ export function canOccupyRackPosition(
 }
 
 export function validateCable(cable: Cable): ValidationResult {
-  if (cable.aSide.deviceId === cable.zSide.deviceId && cable.aSide.portId === cable.zSide.portId) {
-    return { valid: false, reason: "cable endpoints must not reference the same port" };
+  if (
+    cable.aSide.deviceId === cable.zSide.deviceId &&
+    cable.aSide.interfaceId === cable.zSide.interfaceId
+  ) {
+    return { valid: false, reason: "cable endpoints must not reference the same interface" };
   }
 
   return { valid: true, reason: "cable endpoints are distinct" };

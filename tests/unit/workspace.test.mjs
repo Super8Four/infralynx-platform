@@ -16,6 +16,12 @@ import {
   validateCable,
   validateRackPosition
 } from "../../packages/dcim-domain/dist/index.js";
+import {
+  validateCableInterfaceBinding,
+  validateInterfaceIpBinding,
+  validateInterfaceVlanBinding,
+  validatePrefixHierarchyBinding
+} from "../../packages/network-domain/dist/index.js";
 import { shellNavigation, workspacePanels } from "../../packages/ui/dist/index.js";
 import {
   canAllocateChildPrefix,
@@ -100,6 +106,7 @@ test("ipam scaffolds validate basic VRF, prefix, IP, and VLAN rules", () => {
   const prefixValidation = validatePrefix({
     id: "prefix-1",
     vrfId: "vrf-1",
+    parentPrefixId: null,
     cidr: "10.0.0.0/24",
     family: 4,
     status: "active",
@@ -114,12 +121,14 @@ test("ipam scaffolds validate basic VRF, prefix, IP, and VLAN rules", () => {
     family: 4,
     status: "active",
     role: "primary",
-    prefixId: "prefix-1"
+    prefixId: "prefix-1",
+    interfaceId: "interface-1"
   });
   const allocationDecision = canAllocateChildPrefix({
     parentPrefix: {
       id: "prefix-1",
       vrfId: "vrf-1",
+      parentPrefixId: null,
       cidr: "10.0.0.0/24",
       family: 4,
       status: "active",
@@ -132,7 +141,14 @@ test("ipam scaffolds validate basic VRF, prefix, IP, and VLAN rules", () => {
     childVrfId: "vrf-1"
   });
   const vlanDirectory = createVlanDirectory([
-    { id: "vlan-1", vlanId: 120, name: "Servers", status: "active", tenantId: "tenant-1" }
+    {
+      id: "vlan-1",
+      vlanId: 120,
+      name: "Servers",
+      status: "active",
+      tenantId: "tenant-1",
+      interfaceIds: ["interface-1"]
+    }
   ]);
 
   assert.equal(prefixValidation.valid, true);
@@ -176,8 +192,8 @@ test("dcim scaffolds validate rack occupancy and cable endpoints", () => {
   const cableValidation = validateCable({
     id: "cable-1",
     kind: "data",
-    aSide: { deviceId: "device-1", portId: "eth0" },
-    zSide: { deviceId: "device-2", portId: "eth1" },
+    aSide: { deviceId: "device-1", interfaceId: "eth0" },
+    zSide: { deviceId: "device-2", interfaceId: "eth1" },
     status: "connected"
   });
   const rackDirectory = createRackDirectory([rack]);
@@ -192,4 +208,39 @@ test("ui scaffolds expose navigation and workspace panels", () => {
   assert.equal(shellNavigation.length >= 6, true);
   assert.equal(workspacePanels.some((panel) => panel.id === "dcim"), true);
   assert.equal(shellNavigation[0]?.label, "Overview");
+});
+
+test("cross-domain bindings stay explicit and ID-based", () => {
+  const ipBinding = validateInterfaceIpBinding({
+    id: "binding-ip-1",
+    interfaceId: "interface-1",
+    ipAddressId: "ip-1",
+    vrfId: "vrf-1",
+    prefixId: "prefix-1",
+    role: "primary"
+  });
+  const vlanBinding = validateInterfaceVlanBinding({
+    id: "binding-vlan-1",
+    interfaceId: "interface-1",
+    vlanId: "vlan-1",
+    mode: "access",
+    tagged: false
+  });
+  const cableBinding = validateCableInterfaceBinding({
+    id: "binding-cable-1",
+    cableId: "cable-1",
+    aInterfaceId: "interface-1",
+    zInterfaceId: "interface-2"
+  });
+  const hierarchyBinding = validatePrefixHierarchyBinding({
+    id: "binding-prefix-1",
+    vrfId: "vrf-1",
+    parentPrefixId: "prefix-root",
+    prefixId: "prefix-child"
+  });
+
+  assert.equal(ipBinding.valid, true);
+  assert.equal(vlanBinding.valid, true);
+  assert.equal(cableBinding.valid, true);
+  assert.equal(hierarchyBinding.valid, true);
 });
