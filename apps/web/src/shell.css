@@ -1,0 +1,348 @@
+:root {
+  --ui-background: #0f1823;
+  --ui-background-elevated: #172434;
+  --ui-surface: #203246;
+  --ui-surface-muted: #1b2a3b;
+  --ui-border: #39506a;
+  --ui-text: #f7f7f4;
+  --ui-text-muted: #b9c4ce;
+  --ui-accent: #d7b26d;
+  --ui-accent-cool: #6da6d7;
+  --ui-accent-signal: #8bd6a7;
+  --ui-shadow: 0 24px 80px rgba(4, 10, 18, 0.45);
+  color-scheme: dark;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(109, 166, 215, 0.18), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(139, 214, 167, 0.12), transparent 24%),
+    linear-gradient(180deg, #101a26 0%, #0b121a 100%);
+  color: var(--ui-text);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  min-height: 100vh;
+  animation: shell-fade 420ms ease-out;
+}
+
+.shell__rail,
+.shell__context {
+  backdrop-filter: blur(14px);
+  background: rgba(15, 24, 35, 0.84);
+}
+
+.shell__rail {
+  border-right: 1px solid rgba(57, 80, 106, 0.65);
+  padding: 28px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.shell__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.shell__brand p,
+.shell__brand span,
+.shell__eyebrow,
+.shell__nav-link small,
+.shell__strip span {
+  margin: 0;
+}
+
+.shell__brand p {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.shell__brand span {
+  display: block;
+  color: var(--ui-text-muted);
+  font-size: 0.84rem;
+}
+
+.shell__brand-mark {
+  width: 14px;
+  height: 44px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--ui-accent), var(--ui-accent-cool));
+  box-shadow: 0 0 22px rgba(215, 178, 109, 0.35);
+}
+
+.shell__nav {
+  display: grid;
+  gap: 10px;
+}
+
+.shell__nav-link {
+  padding: 14px 14px 12px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: rgba(32, 50, 70, 0.26);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.shell__nav-link:hover,
+.shell__nav-link--active {
+  transform: translateX(4px);
+  border-color: color-mix(in srgb, var(--nav-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--nav-accent) 10%, rgba(32, 50, 70, 0.4));
+}
+
+.shell__nav-link span,
+.shell__header h1,
+.shell__hero h2,
+.shell__panel h3,
+.shell__context h3 {
+  display: block;
+}
+
+.shell__nav-link span {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.shell__nav-link small {
+  color: var(--ui-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.shell__rail-footer {
+  margin-top: auto;
+  padding: 16px;
+  border: 1px solid rgba(57, 80, 106, 0.65);
+  border-radius: 20px;
+  background: rgba(23, 36, 52, 0.8);
+}
+
+.shell__rail-footer p {
+  color: var(--ui-text-muted);
+  margin: 0 0 8px;
+}
+
+.shell__workspace {
+  padding: 32px;
+  display: grid;
+  gap: 24px;
+}
+
+.shell__header,
+.shell__strip,
+.shell__hero,
+.shell__context-block {
+  border: 1px solid rgba(57, 80, 106, 0.65);
+  background: rgba(23, 36, 52, 0.76);
+  box-shadow: var(--ui-shadow);
+}
+
+.shell__header {
+  border-radius: 28px;
+  padding: 24px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+}
+
+.shell__header h1 {
+  margin: 8px 0 0;
+  font-size: clamp(2rem, 3vw, 3rem);
+}
+
+.shell__header-meta {
+  text-align: right;
+}
+
+.shell__header-meta span,
+.shell__hero-copy p,
+.shell__panel p,
+.shell__context-block p,
+.shell__notes,
+.shell__strip {
+  color: var(--ui-text-muted);
+}
+
+.shell__header-meta strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ui-text);
+  font-size: 1.1rem;
+}
+
+.shell__hero {
+  border-radius: 34px;
+  padding: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 28px;
+}
+
+.shell__eyebrow,
+.shell__panel-eyebrow {
+  color: var(--ui-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.74rem;
+}
+
+.shell__hero h2 {
+  margin: 12px 0 18px;
+  font-size: clamp(2.2rem, 4vw, 4rem);
+  line-height: 0.95;
+  max-width: 12ch;
+}
+
+.shell__hero-copy p:last-child {
+  max-width: 54ch;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.shell__hero-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.shell__panel {
+  padding: 20px;
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(109, 166, 215, 0.16), transparent 60%),
+    rgba(32, 50, 70, 0.82);
+  border: 1px solid rgba(85, 111, 138, 0.55);
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.shell__panel:hover {
+  transform: translateY(-3px);
+  border-color: rgba(215, 178, 109, 0.55);
+}
+
+.shell__panel h3 {
+  margin: 10px 0 8px;
+  font-size: 1.2rem;
+}
+
+.shell__panel ul,
+.shell__notes {
+  margin: 14px 0 0;
+  padding-left: 18px;
+}
+
+.shell__panel li,
+.shell__notes li {
+  margin-bottom: 8px;
+}
+
+.shell__strip {
+  border-radius: 26px;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.shell__strip strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ui-text);
+}
+
+.shell__context {
+  border-left: 1px solid rgba(57, 80, 106, 0.65);
+  padding: 32px 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.shell__context-block {
+  border-radius: 24px;
+  padding: 22px;
+}
+
+.shell__context h3 {
+  margin: 8px 0 12px;
+  font-size: 1.4rem;
+}
+
+@keyframes shell-fade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1100px) {
+  .shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  .shell__context {
+    grid-column: 1 / -1;
+    border-left: none;
+    border-top: 1px solid rgba(57, 80, 106, 0.65);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shell__hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .shell__rail,
+  .shell__context {
+    border: none;
+  }
+
+  .shell__workspace,
+  .shell__context {
+    padding: 18px;
+  }
+
+  .shell__header {
+    gap: 18px;
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .shell__strip,
+  .shell__context {
+    grid-template-columns: 1fr;
+  }
+}
