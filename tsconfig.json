@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/config" },
+    { "path": "./packages/db-abstraction" },
     { "path": "./packages/domain-core" },
     { "path": "./packages/shared" },
     { "path": "./apps/api" },

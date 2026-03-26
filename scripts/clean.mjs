@@ -9,6 +9,8 @@ const paths = [
   "apps/worker/tsconfig.tsbuildinfo",
   "packages/config/dist",
   "packages/config/tsconfig.tsbuildinfo",
+  "packages/db-abstraction/dist",
+  "packages/db-abstraction/tsconfig.tsbuildinfo",
   "packages/domain-core/dist",
   "packages/domain-core/tsconfig.tsbuildinfo",
   "packages/shared/dist",
