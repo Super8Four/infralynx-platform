@@ -17,6 +17,11 @@ import {
   validateRackPosition
 } from "../../packages/dcim-domain/dist/index.js";
 import {
+  buildAdjacencyIndex,
+  tracePath,
+  validateTopologyEdge
+} from "../../packages/network-domain/dist/index.js";
+import {
   validateCableInterfaceBinding,
   validateInterfaceIpBinding,
   validateInterfaceVlanBinding,
@@ -243,4 +248,50 @@ test("cross-domain bindings stay explicit and ID-based", () => {
   assert.equal(vlanBinding.valid, true);
   assert.equal(cableBinding.valid, true);
   assert.equal(hierarchyBinding.valid, true);
+});
+
+test("network topology and path tracing stay deterministic", () => {
+  const l2Edge = validateTopologyEdge({
+    id: "edge-l2-1",
+    kind: "l2-adjacency",
+    fromId: "interface-1",
+    toId: "interface-2",
+    metadata: { cableId: "cable-1" }
+  });
+  const edges = [
+    {
+      id: "edge-l2-1",
+      kind: "l2-adjacency",
+      fromId: "interface-1",
+      toId: "interface-2",
+      metadata: { cableId: "cable-1" }
+    },
+    {
+      id: "edge-vlan-1",
+      kind: "vlan-propagation",
+      fromId: "interface-2",
+      toId: "vlan-1",
+      metadata: { mode: "access" }
+    },
+    {
+      id: "edge-l3-1",
+      kind: "l3-adjacency",
+      fromId: "interface-2",
+      toId: "ip-1",
+      metadata: { bindingId: "binding-ip-1" }
+    }
+  ];
+  const adjacency = buildAdjacencyIndex(edges);
+  const path = tracePath(edges, {
+    startNodeId: "interface-1",
+    targetNodeId: "ip-1",
+    allowedKinds: ["l2-adjacency", "l3-adjacency"],
+    maxDepth: 4
+  });
+
+  assert.equal(l2Edge.valid, true);
+  assert.equal(adjacency.get("interface-1")?.length, 1);
+  assert.equal(path.found, true);
+  assert.equal(path.path.length, 2);
+  assert.equal(path.path[1]?.kind, "l3-adjacency");
 });

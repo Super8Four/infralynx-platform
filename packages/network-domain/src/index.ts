@@ -76,3 +76,6 @@ export function validatePrefixHierarchyBinding(binding: PrefixHierarchyBinding):
 
   return { valid: true, reason: "prefix hierarchy shape is valid" };
 }
+
+export * from "./topology/index.js";
+export * from "./path-tracing/index.js";
