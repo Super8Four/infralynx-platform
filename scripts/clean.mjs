@@ -17,6 +17,8 @@ const paths = [
   "packages/audit/tsconfig.tsbuildinfo",
   "packages/db-abstraction/dist",
   "packages/db-abstraction/tsconfig.tsbuildinfo",
+  "packages/dcim-domain/dist",
+  "packages/dcim-domain/tsconfig.tsbuildinfo",
   "packages/domain-core/dist",
   "packages/domain-core/tsconfig.tsbuildinfo",
   "packages/ipam-domain/dist",
@@ -26,5 +28,19 @@ const paths = [
 ];
 
 for (const path of paths) {
-  rmSync(path, { force: true, recursive: true });
+  try {
+    rmSync(path, {
+      force: true,
+      recursive: true,
+      maxRetries: 3,
+      retryDelay: 100
+    });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "EPERM") {
+      // Windows can briefly hold generated files open; ignore transient cleanup locks.
+      continue;
+    }
+
+    throw error;
+  }
 }
