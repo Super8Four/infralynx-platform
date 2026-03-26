@@ -19,6 +19,8 @@ const paths = [
   "packages/db-abstraction/tsconfig.tsbuildinfo",
   "packages/domain-core/dist",
   "packages/domain-core/tsconfig.tsbuildinfo",
+  "packages/ipam-domain/dist",
+  "packages/ipam-domain/tsconfig.tsbuildinfo",
   "packages/shared/dist",
   "packages/shared/tsconfig.tsbuildinfo"
 ];

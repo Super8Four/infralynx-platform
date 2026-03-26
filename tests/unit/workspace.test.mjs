@@ -10,6 +10,14 @@ import {
 } from "../../packages/core-domain/dist/index.js";
 import { createSession, resolveAccessDecision } from "../../packages/auth/dist/index.js";
 import { createAuditRecord, summarizeAuditRecord } from "../../packages/audit/dist/index.js";
+import {
+  canAllocateChildPrefix,
+  createVlanDirectory,
+  isValidRouteDistinguisher,
+  isValidVlanId,
+  validateIpAddress,
+  validatePrefix
+} from "../../packages/ipam-domain/dist/index.js";
 import { coreDomains, platformBoundaries } from "../../packages/domain-core/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
 
@@ -79,4 +87,51 @@ test("audit scaffolds create append-only summaries", () => {
     summarizeAuditRecord(record),
     "2026-03-26T00:00:00.000Z authentication:session.created by user"
   );
+});
+
+test("ipam scaffolds validate basic VRF, prefix, IP, and VLAN rules", () => {
+  const prefixValidation = validatePrefix({
+    id: "prefix-1",
+    vrfId: "vrf-1",
+    cidr: "10.0.0.0/24",
+    family: 4,
+    status: "active",
+    allocationMode: "hierarchical",
+    tenantId: "tenant-1",
+    vlanId: "vlan-1"
+  });
+  const addressValidation = validateIpAddress({
+    id: "ip-1",
+    vrfId: "vrf-1",
+    address: "10.0.0.10/24",
+    family: 4,
+    status: "active",
+    role: "primary",
+    prefixId: "prefix-1"
+  });
+  const allocationDecision = canAllocateChildPrefix({
+    parentPrefix: {
+      id: "prefix-1",
+      vrfId: "vrf-1",
+      cidr: "10.0.0.0/24",
+      family: 4,
+      status: "active",
+      allocationMode: "hierarchical",
+      tenantId: "tenant-1",
+      vlanId: null
+    },
+    childCidr: "10.0.0.0/28",
+    childFamily: 4,
+    childVrfId: "vrf-1"
+  });
+  const vlanDirectory = createVlanDirectory([
+    { id: "vlan-1", vlanId: 120, name: "Servers", status: "active", tenantId: "tenant-1" }
+  ]);
+
+  assert.equal(prefixValidation.valid, true);
+  assert.equal(addressValidation.valid, true);
+  assert.equal(allocationDecision.valid, true);
+  assert.equal(vlanDirectory.get(120)?.name, "Servers");
+  assert.equal(isValidVlanId(4094), true);
+  assert.equal(isValidRouteDistinguisher("65000:10"), true);
 });
