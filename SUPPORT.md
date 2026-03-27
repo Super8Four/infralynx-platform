@@ -1,17 +1,9 @@
-# Support Policy
+# Support
 
-## Current Model
+InfraLynx support is organized by channel:
 
-InfraLynx is currently a private internal program. Support is oriented around engineering, platform, and program stakeholders.
+- GitHub Issues for bugs, enhancements, and documentation gaps
+- GitHub Discussions for questions and design discussion when enabled
+- Private security reporting for vulnerabilities
 
-## Routing
-
-- Implementation requests: feature or task issue
-- Defects: bug issue
-- Documentation gaps: docs issue
-- Security concerns: follow SECURITY.md
-- Operational concerns: route to the relevant repository and owning team once environments exist
-
-## Service Expectations
-
-Formal support SLAs are not yet defined at this stage of the program.
+Operational and commercial support models will expand as hosted and enterprise offerings mature.
