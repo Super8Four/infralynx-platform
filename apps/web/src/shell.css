@@ -59,6 +59,11 @@ a {
   gap: 28px;
 }
 
+.shell__rail-head {
+  display: grid;
+  gap: 20px;
+}
+
 .shell__brand {
   display: flex;
   align-items: center;
@@ -95,6 +100,24 @@ a {
 .shell__nav {
   display: grid;
   gap: 10px;
+}
+
+.shell__nav-groups {
+  display: grid;
+  gap: 22px;
+}
+
+.shell__nav-group {
+  display: grid;
+  gap: 10px;
+}
+
+.shell__nav-group-label {
+  margin: 0;
+  color: rgba(185, 196, 206, 0.76);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .shell__nav-link {
@@ -151,6 +174,91 @@ a {
   padding: 32px;
   display: grid;
   gap: 24px;
+}
+
+.shell__topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: start;
+  padding: 22px 26px;
+  border-radius: 28px;
+  border: 1px solid rgba(57, 80, 106, 0.65);
+  background:
+    linear-gradient(180deg, rgba(23, 36, 52, 0.82), rgba(12, 19, 29, 0.88)),
+    radial-gradient(circle at top right, rgba(109, 166, 215, 0.12), transparent 32%);
+  box-shadow: var(--ui-shadow);
+}
+
+.shell__topbar-main,
+.shell__topbar-side {
+  display: grid;
+  gap: 14px;
+}
+
+.shell__topbar-side {
+  justify-items: end;
+}
+
+.shell__topbar-heading h1 {
+  display: block;
+  margin: 8px 0 0;
+  font-size: clamp(2rem, 3vw, 3rem);
+}
+
+.shell__breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: var(--ui-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.shell__breadcrumb {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.shell__breadcrumb small {
+  color: rgba(185, 196, 206, 0.55);
+}
+
+.shell__topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+}
+
+.shell__action-pill,
+.shell__action-link,
+.shell__context-link,
+.shell__placeholder-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(57, 80, 106, 0.52);
+  background: rgba(12, 19, 29, 0.48);
+  color: var(--ui-text);
+  font-size: 0.82rem;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.shell__action-pill:hover,
+.shell__action-link:hover,
+.shell__context-link:hover,
+.shell__placeholder-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(109, 166, 215, 0.5);
+  background: rgba(17, 28, 40, 0.82);
 }
 
 .shell__search {
@@ -426,6 +534,13 @@ a {
   border-color: rgba(215, 178, 109, 0.55);
 }
 
+.shell__panel--active {
+  border-color: rgba(109, 166, 215, 0.58);
+  background:
+    linear-gradient(135deg, rgba(109, 166, 215, 0.24), transparent 60%),
+    rgba(32, 50, 70, 0.92);
+}
+
 .shell__panel h3 {
   margin: 10px 0 8px;
   font-size: 1.2rem;
@@ -603,9 +718,47 @@ a {
   padding: 22px;
 }
 
+.shell__context-block--nav {
+  background:
+    linear-gradient(180deg, rgba(23, 36, 52, 0.82), rgba(12, 19, 29, 0.86)),
+    radial-gradient(circle at top right, rgba(215, 178, 109, 0.12), transparent 34%);
+}
+
+.shell__context-links,
+.shell__action-stack,
+.shell__placeholder-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .shell__context h3 {
   margin: 8px 0 12px;
   font-size: 1.4rem;
+}
+
+.shell__placeholder-stage {
+  display: grid;
+  gap: 18px;
+  padding: 26px;
+  border-radius: 28px;
+  border: 1px solid rgba(57, 80, 106, 0.65);
+  background:
+    radial-gradient(circle at top right, rgba(139, 214, 167, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(23, 36, 52, 0.8), rgba(11, 18, 26, 0.9));
+  box-shadow: var(--ui-shadow);
+}
+
+.shell__placeholder-copy h3 {
+  margin: 8px 0 10px;
+  font-size: 1.6rem;
+}
+
+.shell__placeholder-copy p:last-child {
+  max-width: 54ch;
+  margin: 0;
+  color: var(--ui-text-muted);
 }
 
 .rack-stage {
@@ -1255,6 +1408,18 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .shell__topbar {
+    flex-direction: column;
+  }
+
+  .shell__topbar-side {
+    justify-items: start;
+  }
+
+  .shell__topbar-actions {
+    justify-content: start;
+  }
+
   .shell__search-bar {
     grid-template-columns: 1fr;
   }
@@ -1291,7 +1456,8 @@ a {
     padding: 18px;
   }
 
-  .shell__header {
+  .shell__header,
+  .shell__topbar {
     gap: 18px;
     align-items: start;
     flex-direction: column;
