@@ -36,3 +36,4 @@ temp/
 *.tsbuildinfo
 apps/api/media-data/
 runtime-data/
+!runtime-data/.gitkeep

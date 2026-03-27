@@ -20,6 +20,7 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 - `packages/media-core` for media metadata, validation, linking, and access-control contracts
 - `packages/media-storage` for local-first media object storage adapters
 - `packages/network-domain` for explicit bindings across interfaces, IPs, VLANs, cables, and prefix hierarchy
+- `packages/data-transfer` for import/export schema contracts, validation, and transfer-state orchestration
 - `packages/ui` for shell navigation, tokens, and shared frontend composition contracts
 - `packages/shared` for cross-cutting utilities that are safe to reuse
 - `tests` for cross-workspace test organization
