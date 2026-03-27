@@ -3,7 +3,10 @@ export type StatusScope =
   | "tag"
   | "authentication"
   | "authorization"
-  | "audit";
+  | "audit"
+  | "media";
+
+export type LinkableObjectType = "tenant" | "device" | "rack" | "site";
 
 export interface Tenant {
   readonly id: string;
@@ -39,6 +42,11 @@ export interface RoleDefinition {
   readonly permissionIds: readonly string[];
 }
 
+export interface ObjectAssociationReference {
+  readonly objectType: LinkableObjectType;
+  readonly objectId: string;
+}
+
 export const defaultTenantStatuses: readonly StatusDefinition[] = [
   { id: "tenant-active", slug: "active", label: "Active", scope: "tenant" },
   { id: "tenant-suspended", slug: "suspended", label: "Suspended", scope: "tenant" },
@@ -50,7 +58,11 @@ export const defaultCorePermissions: readonly PermissionDefinition[] = [
   { id: "tenant:write", resource: "tenant", action: "write" },
   { id: "tag:assign", resource: "tag", action: "assign" },
   { id: "status:read", resource: "status", action: "read" },
-  { id: "audit:read", resource: "audit", action: "read" }
+  { id: "audit:read", resource: "audit", action: "read" },
+  { id: "media:read", resource: "media", action: "read" },
+  { id: "media:write", resource: "media", action: "write" },
+  { id: "media:delete", resource: "media", action: "delete" },
+  { id: "media:assign", resource: "media", action: "assign" }
 ] as const;
 
 export const defaultCoreRoles: readonly RoleDefinition[] = [
@@ -64,9 +76,13 @@ export const defaultCoreRoles: readonly RoleDefinition[] = [
     id: "core-auditor",
     slug: "auditor",
     name: "Auditor",
-    permissionIds: ["tenant:read", "status:read", "audit:read"]
+    permissionIds: ["tenant:read", "status:read", "audit:read", "media:read"]
   }
 ] as const;
+
+export function isLinkableObjectType(value: string): value is LinkableObjectType {
+  return value === "tenant" || value === "device" || value === "rack" || value === "site";
+}
 
 export function createTenantDirectory(tenants: readonly Tenant[]) {
   return new Map(tenants.map((tenant) => [tenant.id, tenant]));
