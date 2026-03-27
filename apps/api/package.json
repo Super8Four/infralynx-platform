@@ -18,6 +18,7 @@
     "@infralynx/domain-core": "*",
     "@infralynx/media-core": "*",
     "@infralynx/media-storage": "*",
+    "@infralynx/scheduler": "*",
     "@infralynx/shared": "*"
   }
 }

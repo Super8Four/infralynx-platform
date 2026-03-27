@@ -12,10 +12,15 @@ import {
   appendFailureLogs,
   createFileBackedJobQueueStore
 } from "../../../../packages/job-queue/dist/index.js";
+import {
+  createFileBackedSchedulerStore,
+  createSchedulerJobLogs
+} from "../../../../packages/scheduler/dist/index.js";
 import { platformBoundaries } from "../../../../packages/domain-core/dist/index.js";
 import { jobHandlers } from "./handlers.js";
 
 const jobsStateFilePath = resolve(process.cwd(), "runtime-data/jobs/queue-state.json");
+const schedulerStateFilePath = resolve(process.cwd(), "runtime-data/scheduler/state.json");
 
 export interface WorkerCycleResult {
   readonly handled: boolean;
@@ -24,6 +29,7 @@ export interface WorkerCycleResult {
 }
 
 const queue = createFileBackedJobQueueStore(jobsStateFilePath);
+const schedulerStore = createFileBackedSchedulerStore(schedulerStateFilePath);
 
 export function describeWorkerRuntime(): string {
   return `${workspaceMetadata.name} worker boundary: ${platformBoundaries.worker}`;
@@ -113,12 +119,27 @@ export async function runWorkerCycle(): Promise<WorkerCycleResult> {
   }
 }
 
+export function runSchedulerCycle(timestamp = new Date().toISOString()) {
+  const dueResult = schedulerStore.runDueSchedules(queue, timestamp);
+
+  if (dueResult.enqueuedJobs.length > 0) {
+    queue.appendLogs(
+      dueResult.updatedSchedules.flatMap((schedule) =>
+        createSchedulerJobLogs(schedule.id, dueResult.enqueuedJobs.filter((job) => job.payload["scheduleId"] === schedule.id), timestamp)
+      )
+    );
+  }
+
+  return dueResult;
+}
+
 export async function startWorkerLoop(
   pollIntervalMs = Number(process.env["INFRALYNX_JOB_POLL_INTERVAL_MS"] ?? "1000")
 ) {
   console.log(describeWorkerRuntime());
 
   if (process.env["INFRALYNX_WORKER_MODE"] === "once") {
+    runSchedulerCycle();
     const result = await runWorkerCycle();
     console.log(`worker cycle result: ${result.status}`);
 
@@ -126,6 +147,7 @@ export async function startWorkerLoop(
   }
 
   setInterval(() => {
+    runSchedulerCycle();
     void runWorkerCycle();
   }, pollIntervalMs);
 

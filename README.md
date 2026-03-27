@@ -30,6 +30,7 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 - `packages/media-core` for media metadata, validation, linking, and access-control contracts
 - `packages/media-storage` for local-first media object storage adapters
 - `packages/network-domain` for explicit bindings across interfaces, IPs, VLANs, cables, and prefix hierarchy
+- `packages/scheduler` for recurring schedule records, cron parsing, and job-trigger orchestration
 - `packages/ui` for shell navigation, tokens, and shared frontend composition contracts
 - `packages/webhooks` for webhook registration, signing, and delivery orchestration
 - `packages/shared` for cross-cutting utilities that are safe to reuse

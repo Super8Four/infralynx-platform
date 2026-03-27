@@ -96,6 +96,13 @@ import {
   validateWebhookConfiguration,
   webhookMatchesEvent
 } from "../../packages/webhooks/dist/index.js";
+import {
+  calculateNextRun,
+  createFileBackedSchedulerStore,
+  resetFileBackedSchedulerStore,
+  validateCronExpression,
+  validateScheduleInput
+} from "../../packages/scheduler/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
 import { createTopologyView } from "../../packages/network-domain/dist/index.js";
 
@@ -837,4 +844,57 @@ test("webhook access scaffolds enforce role-based delivery permissions", () => {
 
   assert.equal(adminDecision.allowed, true);
   assert.equal(auditorDecision.allowed, false);
+});
+
+test("scheduler scaffolds validate cron expressions and compute next runs", () => {
+  const cronValidation = validateCronExpression("*/15 8-18 * * 1-5");
+  const scheduleValidation = validateScheduleInput({
+    name: "weekday refresh",
+    cronExpression: "0 */6 * * *",
+    timezone: "UTC",
+    jobType: "core.echo",
+    payload: { message: "scheduled" }
+  });
+  const nextRun = calculateNextRun("0 */6 * * *", "2026-03-27T05:10:00.000Z", "UTC");
+
+  assert.equal(cronValidation.valid, true);
+  assert.equal(scheduleValidation.valid, true);
+  assert.equal(nextRun, "2026-03-27T06:00:00.000Z");
+});
+
+test("scheduler scaffolds persist schedules and enqueue due jobs across restarts", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-scheduler-"));
+  const schedulerStatePath = join(tempRoot, "scheduler.json");
+  const jobQueueStatePath = join(tempRoot, "jobs.json");
+
+  try {
+    const schedulerStore = createFileBackedSchedulerStore(schedulerStatePath);
+    const jobQueue = createFileBackedJobQueueStore(jobQueueStatePath);
+    const schedule = schedulerStore.createSchedule({
+      id: "schedule-daily",
+      name: "daily echo",
+      cronExpression: "0 6 * * *",
+      timezone: "UTC",
+      jobType: "core.echo",
+      payload: { message: "hello from schedule" },
+      enabled: true,
+      createdBy: "user-1",
+      createdAt: "2026-03-27T05:00:00.000Z"
+    });
+
+    const reopenedStore = createFileBackedSchedulerStore(schedulerStatePath);
+    const dueResult = reopenedStore.runDueSchedules(jobQueue, "2026-03-27T06:00:00.000Z");
+    const persisted = reopenedStore.getSchedule(schedule.id);
+
+    assert.equal(reopenedStore.listSchedules().length, 1);
+    assert.equal(dueResult.enqueuedJobs.length, 1);
+    assert.equal(dueResult.enqueuedJobs[0]?.payload.scheduleId, "schedule-daily");
+    assert.equal(jobQueue.listJobs().length, 1);
+    assert.equal(persisted?.lastRun, "2026-03-27T06:00:00.000Z");
+    assert.equal(persisted?.nextRun, "2026-03-28T06:00:00.000Z");
+  } finally {
+    resetFileBackedSchedulerStore(schedulerStatePath);
+    resetFileBackedJobQueueStore(jobQueueStatePath);
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
