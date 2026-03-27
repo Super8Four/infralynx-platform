@@ -23,6 +23,10 @@ const paths = [
   "packages/domain-core/tsconfig.tsbuildinfo",
   "packages/ipam-domain/dist",
   "packages/ipam-domain/tsconfig.tsbuildinfo",
+  "packages/job-core/dist",
+  "packages/job-core/tsconfig.tsbuildinfo",
+  "packages/job-queue/dist",
+  "packages/job-queue/tsconfig.tsbuildinfo",
   "packages/media-core/dist",
   "packages/media-core/tsconfig.tsbuildinfo",
   "packages/media-storage/dist",
@@ -32,7 +36,8 @@ const paths = [
   "packages/ui/dist",
   "packages/ui/tsconfig.tsbuildinfo",
   "packages/shared/dist",
-  "packages/shared/tsconfig.tsbuildinfo"
+  "packages/shared/tsconfig.tsbuildinfo",
+  "runtime-data/"
 ];
 
 for (const path of paths) {

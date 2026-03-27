@@ -4,7 +4,8 @@ export type StatusScope =
   | "authentication"
   | "authorization"
   | "audit"
-  | "media";
+  | "media"
+  | "job";
 
 export type LinkableObjectType = "tenant" | "device" | "rack" | "site";
 
@@ -62,7 +63,10 @@ export const defaultCorePermissions: readonly PermissionDefinition[] = [
   { id: "media:read", resource: "media", action: "read" },
   { id: "media:write", resource: "media", action: "write" },
   { id: "media:delete", resource: "media", action: "delete" },
-  { id: "media:assign", resource: "media", action: "assign" }
+  { id: "media:assign", resource: "media", action: "assign" },
+  { id: "job:read", resource: "job", action: "read" },
+  { id: "job:write", resource: "job", action: "write" },
+  { id: "job:execute", resource: "job", action: "execute" }
 ] as const;
 
 export const defaultCoreRoles: readonly RoleDefinition[] = [
@@ -76,7 +80,7 @@ export const defaultCoreRoles: readonly RoleDefinition[] = [
     id: "core-auditor",
     slug: "auditor",
     name: "Auditor",
-    permissionIds: ["tenant:read", "status:read", "audit:read", "media:read"]
+    permissionIds: ["tenant:read", "status:read", "audit:read", "media:read", "job:read"]
   }
 ] as const;
 

@@ -15,6 +15,8 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 - `packages/dcim-domain` for physical infrastructure, rack, interface, power, and cabling contracts
 - `packages/domain-core` for core platform contracts and boundaries
 - `packages/ipam-domain` for VRF, prefix, IP address, VLAN, and allocation contracts
+- `packages/job-core` for job lifecycle, retry, logging, and audit-aware job contracts
+- `packages/job-queue` for queue abstractions and file-backed queue state
 - `packages/media-core` for media metadata, validation, linking, and access-control contracts
 - `packages/media-storage` for local-first media object storage adapters
 - `packages/network-domain` for explicit bindings across interfaces, IPs, VLANs, cables, and prefix hierarchy

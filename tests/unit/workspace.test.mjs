@@ -61,6 +61,16 @@ import {
 } from "../../packages/ipam-domain/dist/index.js";
 import { coreDomains, platformBoundaries } from "../../packages/domain-core/dist/index.js";
 import {
+  createJobRecord,
+  defaultJobRetryPolicy,
+  markJobSucceeded,
+  registerJobFailure
+} from "../../packages/job-core/dist/index.js";
+import {
+  createFileBackedJobQueueStore,
+  resetFileBackedJobQueueStore
+} from "../../packages/job-queue/dist/index.js";
+import {
   createFileBackedMediaRepository,
   createMediaLinks,
   createMediaRecord,
@@ -538,6 +548,67 @@ test("topology view scaffolds keep layout and filtering deterministic", () => {
   assert.equal(filtered.nodes.length, 2);
   assert.equal(filtered.edges.length, 1);
   assert.equal(filtered.nodes.some((node) => node.siteId === "site-phx1"), false);
+});
+
+test("job scaffolds create lifecycle transitions and bounded retries", () => {
+  const createdJob = createJobRecord({
+    id: "job-1",
+    type: "core.echo",
+    payload: { message: "hello" },
+    createdBy: "user-1",
+    createdAt: "2026-03-27T13:00:00.000Z"
+  });
+  const succeededJob = markJobSucceeded(createdJob, { echoed: true }, "2026-03-27T13:01:00.000Z");
+  const failedOnce = registerJobFailure(createdJob, "transient", defaultJobRetryPolicy, "2026-03-27T13:02:00.000Z");
+  const failedFinal = registerJobFailure(
+    { ...createdJob, retryCount: 2, status: "running" },
+    "permanent",
+    defaultJobRetryPolicy,
+    "2026-03-27T13:03:00.000Z"
+  );
+
+  assert.equal(createdJob.status, "pending");
+  assert.equal(succeededJob.status, "success");
+  assert.equal(failedOnce.willRetry, true);
+  assert.equal(failedOnce.job.status, "pending");
+  assert.equal(failedFinal.willRetry, false);
+  assert.equal(failedFinal.job.status, "failed");
+});
+
+test("job queue scaffolds lease, persist, and log worker activity deterministically", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-jobs-"));
+  const statePath = join(tempRoot, "queue.json");
+  const queue = createFileBackedJobQueueStore(statePath);
+
+  try {
+    const queuedJob = queue.enqueue(
+      createJobRecord({
+        id: "job-queue-1",
+        type: "core.echo",
+        payload: { ok: true },
+        createdBy: "user-1",
+        createdAt: "2026-03-27T13:10:00.000Z"
+      })
+    );
+    const leasedJob = queue.leaseNextPendingJob("2026-03-27T13:11:00.000Z");
+
+    queue.appendLogs([
+      {
+        jobId: queuedJob.id,
+        level: "info",
+        message: "processed by worker",
+        timestamp: "2026-03-27T13:12:00.000Z"
+      }
+    ]);
+
+    assert.equal(queuedJob.status, "pending");
+    assert.equal(leasedJob?.status, "running");
+    assert.equal(queue.getJob(queuedJob.id)?.status, "running");
+    assert.equal(queue.listLogs(queuedJob.id).length >= 2, true);
+  } finally {
+    resetFileBackedJobQueueStore(statePath);
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("media scaffolds persist metadata, links, and local storage objects", () => {

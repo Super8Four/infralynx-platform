@@ -1,8 +1,9 @@
-import { workspaceMetadata } from "../../../packages/config/dist/index.js";
-import { platformBoundaries } from "../../../packages/domain-core/dist/index.js";
+import { pathToFileURL } from "node:url";
 
-export function describeWorkerRuntime(): string {
-  return `${workspaceMetadata.name} worker boundary: ${platformBoundaries.worker}`;
+import { startWorkerLoop } from "./jobs/index.js";
+
+export { describeWorkerRuntime, runWorkerCycle, startWorkerLoop } from "./jobs/index.js";
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void startWorkerLoop();
 }
-
-console.log(describeWorkerRuntime());

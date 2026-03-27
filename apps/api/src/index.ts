@@ -35,6 +35,7 @@ import {
   validateInterfaceVlanBinding,
   validateTopologyEdge
 } from "../../../packages/network-domain/dist/index.js";
+import { handleJobsApiRequest } from "./jobs/index.js";
 import { handleMediaApiRequest } from "./media/index.js";
 
 export interface ApiMetricResponse {
@@ -1130,8 +1131,9 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers":
+        "Content-Type, X-InfraLynx-Actor-Id, X-InfraLynx-Tenant-Id, X-InfraLynx-Role-Ids"
     });
     response.end();
 
@@ -1180,6 +1182,21 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
   if (requestUrl.pathname.startsWith("/api/media")) {
     void handleMediaApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/jobs")) {
+    void handleJobsApiRequest(request, response).then((handled) => {
       if (!handled) {
         sendJson(response, 404, {
           error: {
