@@ -1,7 +1,9 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { shellNavigation, getNavigationItem, workspacePanels } from "../../../packages/ui/dist/index.js";
+import { RackElevation } from "./components/rack/RackElevation.js";
 import { useDomainOverview } from "./hooks/use-domain-overview.js";
+import { useRackElevation } from "./hooks/use-rack-elevation.js";
 
 function getSectionFromHash(): string {
   const hash = window.location.hash.replace(/^#/, "");
@@ -26,6 +28,7 @@ export function App() {
   const [activeSection, setActiveSection] = useState(() => getSectionFromHash());
   const deferredSection = useDeferredValue(activeSection);
   const { status, data, errorMessage, retry } = useDomainOverview();
+  const rack = useRackElevation();
 
   useEffect(() => {
     const onHashChange = () => {
@@ -65,6 +68,8 @@ export function App() {
     indicators: panel.indicators
   }));
   const visiblePanels = domainPanels.length > 0 ? domainPanels : fallbackPanels;
+  const showRackStage =
+    deferredSection === "dcim" && rack.status !== "error" && rack.data !== null;
 
   return (
     <div className="shell">
@@ -190,6 +195,36 @@ export function App() {
             <strong>{status === "ready" ? "Healthy fetch cycle" : status === "error" ? "Retry required" : "Loading"}</strong>
           </div>
         </section>
+
+        <section className="shell__workspace-detail">
+          {rack.status === "loading" ? (
+            <div className="shell__callout">
+              <strong>Loading rack elevation</strong>
+              <span>Building the grid, device positions, and cable overlays from the rack API contract.</span>
+              <div className="shell__loading-bar" aria-hidden="true" />
+            </div>
+          ) : null}
+
+          {rack.status === "error" ? (
+            <div className="shell__callout shell__callout--error">
+              <strong>Rack visualization unavailable</strong>
+              <span>{rack.errorMessage}</span>
+              <button type="button" className="shell__button" onClick={rack.retry}>
+                Retry rack fetch
+              </button>
+            </div>
+          ) : null}
+
+          {showRackStage ? (
+            <RackElevation
+              rack={rack.data.rack}
+              selectedDeviceId={rack.selectedDeviceId}
+              selectedPortId={rack.selectedPortId}
+              onDeviceSelect={rack.selectDevice}
+              onPortSelect={rack.selectPort}
+            />
+          ) : null}
+        </section>
       </main>
 
       <aside className="shell__context">
@@ -211,6 +246,9 @@ export function App() {
               "State transitions are isolated in src/state.",
               "React hooks own loading and retry orchestration."
             ]).map((notice) => (
+              <li key={notice}>{notice}</li>
+            ))}
+            {(showRackStage ? rack.data?.guidance ?? [] : []).map((notice) => (
               <li key={notice}>{notice}</li>
             ))}
           </ul>

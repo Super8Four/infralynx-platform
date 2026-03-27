@@ -27,7 +27,12 @@ import {
   validateInterfaceVlanBinding,
   validatePrefixHierarchyBinding
 } from "../../packages/network-domain/dist/index.js";
-import { shellNavigation, workspacePanels } from "../../packages/ui/dist/index.js";
+import {
+  createRackUnitSlots,
+  getDeviceCoverageLabel,
+  shellNavigation,
+  workspacePanels
+} from "../../packages/ui/dist/index.js";
 import {
   canAllocateChildPrefix,
   createVlanDirectory,
@@ -213,6 +218,43 @@ test("ui scaffolds expose navigation and workspace panels", () => {
   assert.equal(shellNavigation.length >= 6, true);
   assert.equal(workspacePanels.some((panel) => panel.id === "dcim"), true);
   assert.equal(shellNavigation[0]?.label, "Overview");
+});
+
+test("rack system scaffolds create deterministic device slots", () => {
+  const slots = createRackUnitSlots({
+    id: "rack-a1",
+    name: "A1",
+    siteName: "Dallas One",
+    totalUnits: 6,
+    devices: [
+      {
+        id: "device-top",
+        name: "leaf-sw1",
+        role: "Top-of-rack switch",
+        tone: "network",
+        startUnit: 6,
+        heightUnits: 2,
+        ports: []
+      },
+      {
+        id: "device-mid",
+        name: "compute-01",
+        role: "Application host",
+        tone: "compute",
+        startUnit: 3,
+        heightUnits: 2,
+        ports: []
+      }
+    ],
+    cables: []
+  });
+
+  assert.equal(slots.length, 6);
+  assert.equal(slots[0]?.occupant?.id, "device-top");
+  assert.equal(slots[0]?.occupantStart, true);
+  assert.equal(slots[1]?.occupant?.id, "device-top");
+  assert.equal(getDeviceCoverageLabel(slots[0]?.occupant), "6U-5U");
+  assert.equal(slots[3]?.occupant?.id, "device-mid");
 });
 
 test("cross-domain bindings stay explicit and ID-based", () => {
