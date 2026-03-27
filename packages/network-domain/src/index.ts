@@ -78,4 +78,5 @@ export function validatePrefixHierarchyBinding(binding: PrefixHierarchyBinding):
 }
 
 export * from "./topology/index.js";
+export * from "./topology-view/index.js";
 export * from "./path-tracing/index.js";

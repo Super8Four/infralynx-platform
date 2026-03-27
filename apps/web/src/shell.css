@@ -682,6 +682,191 @@ a {
   box-shadow: 0 0 14px rgba(215, 178, 109, 0.45);
 }
 
+.topology-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  gap: 22px;
+}
+
+.topology-stage__frame,
+.topology-stage__detail-block {
+  border: 1px solid rgba(57, 80, 106, 0.65);
+  background: rgba(23, 36, 52, 0.76);
+  box-shadow: var(--ui-shadow);
+  border-radius: 28px;
+}
+
+.topology-stage__frame {
+  padding: 24px;
+}
+
+.topology-stage__header,
+.topology-stage__header-meta,
+.topology-stage__toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topology-stage__header {
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.topology-stage__header h3 {
+  margin: 8px 0 0;
+  font-size: 1.5rem;
+}
+
+.topology-stage__header-meta {
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.topology-stage__header-meta span {
+  color: var(--ui-text-muted);
+  font-size: 0.82rem;
+}
+
+.topology-stage__toolbar {
+  flex-wrap: wrap;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.topology-stage__filter {
+  display: grid;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.topology-stage__filter span {
+  color: var(--ui-text-muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.topology-stage__filter select {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(57, 80, 106, 0.55);
+  background: rgba(12, 19, 29, 0.58);
+  color: var(--ui-text);
+  font: inherit;
+}
+
+.topology-stage__toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.topology-stage__toolbar-actions .shell__button {
+  margin-top: 0;
+}
+
+.topology-stage__viewport {
+  border-radius: 26px;
+  overflow: hidden;
+  border: 1px solid rgba(57, 80, 106, 0.45);
+  background:
+    radial-gradient(circle at top, rgba(109, 166, 215, 0.16), transparent 40%),
+    linear-gradient(180deg, rgba(11, 18, 26, 0.96), rgba(17, 28, 40, 0.98));
+  cursor: grab;
+  min-height: 620px;
+}
+
+.topology-stage__viewport:active {
+  cursor: grabbing;
+}
+
+.topology-stage__canvas {
+  width: 100%;
+  height: 620px;
+  display: block;
+}
+
+.topology-stage__edge {
+  stroke: rgba(109, 166, 215, 0.55);
+  stroke-width: 2.5;
+}
+
+.topology-stage__edge--selected {
+  stroke: rgba(215, 178, 109, 0.88);
+  stroke-width: 3.5;
+}
+
+.topology-stage__edge-label {
+  fill: var(--ui-text-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.topology-stage__node-group {
+  cursor: pointer;
+}
+
+.topology-stage__node {
+  stroke: rgba(247, 247, 244, 0.12);
+  stroke-width: 1.5;
+  transition: transform 160ms ease, stroke 160ms ease;
+}
+
+.topology-stage__node--network {
+  fill: rgba(109, 166, 215, 0.28);
+}
+
+.topology-stage__node--compute {
+  fill: rgba(215, 178, 109, 0.24);
+}
+
+.topology-stage__node--power {
+  fill: rgba(139, 214, 167, 0.24);
+}
+
+.topology-stage__node--storage {
+  fill: rgba(185, 196, 206, 0.22);
+}
+
+.topology-stage__node--selected {
+  stroke: rgba(215, 178, 109, 0.9);
+  stroke-width: 3;
+}
+
+.topology-stage__node-title,
+.topology-stage__node-meta {
+  pointer-events: none;
+}
+
+.topology-stage__node-title {
+  fill: var(--ui-text);
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.topology-stage__node-meta {
+  fill: var(--ui-text-muted);
+  font-size: 0.66rem;
+}
+
+.topology-stage__detail {
+  display: grid;
+  gap: 18px;
+}
+
+.topology-stage__detail-block {
+  padding: 22px;
+}
+
+.topology-stage__node-summary {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 @keyframes shell-fade {
   from {
     opacity: 0;
@@ -725,6 +910,10 @@ a {
   }
 
   .rack-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .topology-stage {
     grid-template-columns: 1fr;
   }
 }

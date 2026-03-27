@@ -12,6 +12,7 @@ import { type Rack, type Site, validateCable, validateRackPosition } from "../..
 import { platformBoundaries } from "../../../packages/domain-core/dist/index.js";
 import { type IpAddress, type Prefix, type Vlan, validateIpAddress, validatePrefix } from "../../../packages/ipam-domain/dist/index.js";
 import {
+  createTopologyView,
   tracePath,
   validateInterfaceIpBinding,
   validateInterfaceVlanBinding,
@@ -82,6 +83,12 @@ export interface ApiRackResponse {
     readonly devices: readonly ApiRackDeviceResponse[];
     readonly cables: readonly ApiRackCableResponse[];
   };
+  readonly guidance: readonly string[];
+}
+
+export interface ApiTopologyResponse {
+  readonly generatedAt: string;
+  readonly graph: ReturnType<typeof createTopologyView>;
   readonly guidance: readonly string[];
 }
 
@@ -353,6 +360,153 @@ function createRackResponse(): ApiRackResponse {
   };
 }
 
+function createTopologyResponse(): ApiTopologyResponse {
+  const graph = createTopologyView(
+    [
+      {
+        id: "device-spine-sw1",
+        name: "spine-sw1",
+        role: "Spine",
+        tone: "network",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["spine-sw1:xe-0/0/1", "spine-sw1:xe-0/0/2", "spine-sw1:xe-0/0/3"],
+        vlanIds: ["vlan-120", "vlan-410"]
+      },
+      {
+        id: "device-leaf-sw1",
+        name: "leaf-sw1",
+        role: "Top-of-rack switch",
+        tone: "network",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["leaf-sw1:xe-0/0/1", "leaf-sw1:xe-0/0/2", "leaf-sw1:xe-0/0/48"],
+        vlanIds: ["vlan-120"]
+      },
+      {
+        id: "device-leaf-sw2",
+        name: "leaf-sw2",
+        role: "Top-of-rack switch",
+        tone: "network",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["leaf-sw2:xe-0/0/1", "leaf-sw2:xe-0/0/2", "leaf-sw2:xe-0/0/48"],
+        vlanIds: ["vlan-120", "vlan-410"]
+      },
+      {
+        id: "device-compute-01",
+        name: "compute-01",
+        role: "Application host",
+        tone: "compute",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["compute-01:eth0", "compute-01:eth1"],
+        vlanIds: ["vlan-120"]
+      },
+      {
+        id: "device-storage-01",
+        name: "storage-01",
+        role: "Storage host",
+        tone: "storage",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["storage-01:eth0", "storage-01:eth1"],
+        vlanIds: ["vlan-410"]
+      },
+      {
+        id: "device-pdu-a",
+        name: "pdu-a",
+        role: "Power distribution",
+        tone: "power",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["pdu-a:feed-a", "pdu-a:feed-b"],
+        vlanIds: []
+      },
+      {
+        id: "device-leaf-phx1",
+        name: "leaf-phx1",
+        role: "Top-of-rack switch",
+        tone: "network",
+        siteId: "site-phx1",
+        siteName: "Phoenix One",
+        interfaceIds: ["leaf-phx1:xe-0/0/1", "leaf-phx1:xe-0/0/2"],
+        vlanIds: ["vlan-220"]
+      },
+      {
+        id: "device-compute-phx1",
+        name: "compute-phx1",
+        role: "Application host",
+        tone: "compute",
+        siteId: "site-phx1",
+        siteName: "Phoenix One",
+        interfaceIds: ["compute-phx1:eth0"],
+        vlanIds: ["vlan-220"]
+      }
+    ],
+    [
+      {
+        id: "cable-spine-leaf1",
+        fromDeviceId: "device-spine-sw1",
+        toDeviceId: "device-leaf-sw1",
+        kind: "cable-link",
+        label: "uplink-a",
+        vlanIds: ["vlan-120"]
+      },
+      {
+        id: "cable-spine-leaf2",
+        fromDeviceId: "device-spine-sw1",
+        toDeviceId: "device-leaf-sw2",
+        kind: "cable-link",
+        label: "uplink-b",
+        vlanIds: ["vlan-120", "vlan-410"]
+      },
+      {
+        id: "cable-leaf1-host1",
+        fromDeviceId: "device-leaf-sw1",
+        toDeviceId: "device-compute-01",
+        kind: "l2-adjacency",
+        label: "server access",
+        vlanIds: ["vlan-120"]
+      },
+      {
+        id: "cable-leaf2-storage1",
+        fromDeviceId: "device-leaf-sw2",
+        toDeviceId: "device-storage-01",
+        kind: "vlan-propagation",
+        label: "storage fabric",
+        vlanIds: ["vlan-410"]
+      },
+      {
+        id: "cable-pdu-host1",
+        fromDeviceId: "device-pdu-a",
+        toDeviceId: "device-compute-01",
+        kind: "cable-link",
+        label: "power feed",
+        vlanIds: []
+      },
+      {
+        id: "cable-phx-leaf-host",
+        fromDeviceId: "device-leaf-phx1",
+        toDeviceId: "device-compute-phx1",
+        kind: "l3-adjacency",
+        label: "remote workload",
+        vlanIds: ["vlan-220"]
+      }
+    ]
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    graph,
+    guidance: [
+      "Topology edges are explicit and never inferred from naming.",
+      "Layout is deterministic so the same inventory produces the same visual ordering.",
+      "Filtering is applied against site, role, and VLAN tags before the graph reaches the canvas."
+    ]
+  };
+}
+
 function createDomainResponse(): ApiOverviewResponse {
   const validPrefixes = referencePrefixes.filter((prefix) => validatePrefix(prefix).valid).length;
   const validAddresses = referenceAddresses.filter((address) => validateIpAddress(address).valid).length;
@@ -560,6 +714,12 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
   if (request.method === "GET" && requestUrl.pathname === "/api/racks/demo") {
     sendJson(response, 200, createRackResponse());
+
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/topology/demo") {
+    sendJson(response, 200, createTopologyResponse());
 
     return;
   }
