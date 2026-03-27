@@ -70,6 +70,11 @@ import {
   resetFileBackedJobQueueStore
 } from "../../packages/job-queue/dist/index.js";
 import {
+  createEventRecord,
+  createFileBackedEventRepository,
+  isEventType
+} from "../../packages/event-core/dist/index.js";
+import {
   applyImport,
   executeImportJobPayload,
   exportDataset,
@@ -83,6 +88,14 @@ import {
   validateMediaUpload
 } from "../../packages/media-core/dist/index.js";
 import { createLocalMediaStorage } from "../../packages/media-storage/dist/index.js";
+import {
+  createFileBackedWebhookRepository,
+  createWebhookRecord,
+  resolveWebhookAccess,
+  signWebhookPayload,
+  validateWebhookConfiguration,
+  webhookMatchesEvent
+} from "../../packages/webhooks/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
 import { createTopologyView } from "../../packages/network-domain/dist/index.js";
 
@@ -741,4 +754,87 @@ test("data transfer job payloads execute import summaries for worker processing"
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("event scaffolds persist explicit event records", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-events-"));
+  const statePath = join(tempRoot, "events.json");
+
+  try {
+    const repository = createFileBackedEventRepository(statePath);
+    const event = createEventRecord({
+      id: "event-1",
+      type: "inventory.device.created",
+      payload: { recordId: "device-1" },
+      createdAt: "2026-03-27T15:00:00.000Z"
+    });
+
+    repository.saveEvent(event);
+
+    assert.equal(isEventType("job.created"), true);
+    assert.equal(repository.getEvent("event-1")?.type, "inventory.device.created");
+    assert.equal(repository.listEvents("inventory.device.created").length, 1);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("webhook scaffolds validate configuration, filter events, and sign payloads", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-webhooks-"));
+  const statePath = join(tempRoot, "webhooks.json");
+
+  try {
+    const repository = createFileBackedWebhookRepository(statePath);
+    const webhook = createWebhookRecord({
+      id: "webhook-1",
+      endpointUrl: "https://example.com/hooks/infralynx",
+      eventTypes: ["inventory.device.created", "job.created"],
+      secret: "super-secret",
+      createdAt: "2026-03-27T15:05:00.000Z"
+    });
+    const event = createEventRecord({
+      id: "event-2",
+      type: "inventory.device.created",
+      payload: { recordId: "device-1" }
+    });
+    const validation = validateWebhookConfiguration({
+      endpointUrl: webhook.endpointUrl,
+      eventTypes: webhook.eventTypes
+    });
+
+    repository.saveWebhook(webhook);
+
+    assert.equal(validation.valid, true);
+    assert.equal(repository.getWebhookById("webhook-1")?.endpointUrl, "https://example.com/hooks/infralynx");
+    assert.equal(webhookMatchesEvent(webhook, event), true);
+    assert.match(signWebhookPayload(webhook.secret, "{\"ok\":true}"), /^[a-f0-9]{64}$/);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("webhook access scaffolds enforce role-based delivery permissions", () => {
+  const adminDecision = resolveWebhookAccess(
+    {
+      id: "user-1",
+      subject: "user-1",
+      tenantId: "tenant-ops",
+      method: "api-token",
+      roleIds: ["core-platform-admin"]
+    },
+    "webhook:write"
+  );
+  const auditorDecision = resolveWebhookAccess(
+    {
+      id: "auditor-1",
+      subject: "auditor-1",
+      tenantId: "tenant-ops",
+      method: "api-token",
+      roleIds: ["core-auditor"]
+    },
+    "webhook:deliver"
+  );
+
+  assert.equal(adminDecision.allowed, true);
+  assert.equal(auditorDecision.allowed, false);
 });

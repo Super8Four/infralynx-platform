@@ -25,6 +25,7 @@ import {
   validatePrefix,
   validatePrefixHierarchy
 } from "../../../../packages/ipam-domain/dist/index.js";
+import { emitPlatformEvent } from "../webhooks/index.js";
 
 type WritableInventoryResource = "sites" | "racks" | "devices" | "prefixes" | "ip-addresses";
 type ReadOnlyInventoryResource =
@@ -84,6 +85,8 @@ type InventoryRecordMap = {
   readonly interfaces: Interface;
   readonly connections: ConnectionSummary;
 };
+
+type InventoryEventAction = "created" | "updated" | "deleted";
 
 interface ApiListResponse<TRecord> {
   readonly resource: InventoryResource;
@@ -541,6 +544,67 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
     "Access-Control-Allow-Origin": "*"
   });
   response.end(JSON.stringify(payload));
+}
+
+function getActorIdFromHeaders(request: IncomingMessage): string {
+  const actorId = request.headers["x-infralynx-actor-id"];
+  return typeof actorId === "string" && actorId.trim().length > 0 ? actorId : "system-api";
+}
+
+function mapInventoryEventType(
+  resource: WritableInventoryResource,
+  action: InventoryEventAction
+):
+  | "inventory.site.created"
+  | "inventory.site.updated"
+  | "inventory.site.deleted"
+  | "inventory.rack.created"
+  | "inventory.rack.updated"
+  | "inventory.rack.deleted"
+  | "inventory.device.created"
+  | "inventory.device.updated"
+  | "inventory.device.deleted"
+  | "inventory.prefix.created"
+  | "inventory.prefix.updated"
+  | "inventory.prefix.deleted"
+  | "inventory.ip-address.created"
+  | "inventory.ip-address.updated"
+  | "inventory.ip-address.deleted" {
+  if (resource === "sites") {
+    return `inventory.site.${action}`;
+  }
+
+  if (resource === "racks") {
+    return `inventory.rack.${action}`;
+  }
+
+  if (resource === "devices") {
+    return `inventory.device.${action}`;
+  }
+
+  if (resource === "prefixes") {
+    return `inventory.prefix.${action}`;
+  }
+
+  return `inventory.ip-address.${action}`;
+}
+
+function emitInventoryEvent(
+  resource: WritableInventoryResource,
+  action: InventoryEventAction,
+  actorId: string,
+  recordId: string,
+  payload: Record<string, unknown>
+) {
+  emitPlatformEvent({
+    type: mapInventoryEventType(resource, action),
+    createdBy: actorId,
+    payload: {
+      resource,
+      recordId,
+      ...payload
+    }
+  });
 }
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
@@ -1418,6 +1482,7 @@ async function handleCreateWritableResource(
   response: ServerResponse,
   resource: WritableInventoryResource
 ) {
+  const actorId = getActorIdFromHeaders(request);
   let payload: Record<string, unknown>;
 
   try {
@@ -1475,6 +1540,11 @@ async function handleCreateWritableResource(
   });
 
   const context = createInventoryContext();
+  if (outcome.validation.record?.id) {
+    emitInventoryEvent(resource, "created", actorId, outcome.validation.record.id, {
+      record: outcome.validation.record as unknown as Record<string, unknown>
+    });
+  }
   createMutationResponse(
     response,
     201,
@@ -1491,6 +1561,7 @@ async function handleUpdateWritableResource(
   resource: WritableInventoryResource,
   recordId: string
 ) {
+  const actorId = getActorIdFromHeaders(request);
   let payload: Record<string, unknown>;
 
   try {
@@ -1592,6 +1663,11 @@ async function handleUpdateWritableResource(
   }
 
   const context = createInventoryContext();
+  if (outcome.validation.record?.id) {
+    emitInventoryEvent(resource, "updated", actorId, outcome.validation.record.id, {
+      record: outcome.validation.record as unknown as Record<string, unknown>
+    });
+  }
   createMutationResponse(
     response,
     200,
@@ -1603,10 +1679,12 @@ async function handleUpdateWritableResource(
 }
 
 function deleteWritableResource(
+  request: IncomingMessage,
   response: ServerResponse,
   resource: WritableInventoryResource,
   recordId: string
 ) {
+  const actorId = getActorIdFromHeaders(request);
   const outcome = withInventoryMutation((state) => {
     const context: InventoryContext = {
       tenants: referenceTenants,
@@ -1719,6 +1797,9 @@ function deleteWritableResource(
 
   sendJson(response, 200, {
     resource,
+    deletedId: recordId
+  });
+  emitInventoryEvent(resource, "deleted", actorId, recordId, {
     deletedId: recordId
   });
 }
@@ -1844,7 +1925,7 @@ export async function handleInventoryApiRequest(
         return true;
       }
 
-      deleteWritableResource(response, resource as WritableInventoryResource, recordId);
+      deleteWritableResource(request, response, resource as WritableInventoryResource, recordId);
       return true;
     }
   }
