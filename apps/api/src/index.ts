@@ -10,7 +10,17 @@ import {
 } from "../../../packages/core-domain/dist/index.js";
 import { type Rack, type Site, validateCable, validateRackPosition } from "../../../packages/dcim-domain/dist/index.js";
 import { platformBoundaries } from "../../../packages/domain-core/dist/index.js";
-import { type IpAddress, type Prefix, type Vlan, validateIpAddress, validatePrefix } from "../../../packages/ipam-domain/dist/index.js";
+import {
+  buildPrefixHierarchy,
+  createPrefixUtilizationDirectory,
+  type IpAddress,
+  type Prefix,
+  type Vlan,
+  type Vrf,
+  validateIpAddress,
+  validatePrefix,
+  validatePrefixHierarchy
+} from "../../../packages/ipam-domain/dist/index.js";
 import {
   createTopologyView,
   tracePath,
@@ -92,6 +102,21 @@ export interface ApiTopologyResponse {
   readonly guidance: readonly string[];
 }
 
+type ApiIpamUtilizationEntry =
+  ReturnType<typeof createPrefixUtilizationDirectory> extends ReadonlyMap<string, infer TValue>
+    ? TValue
+    : never;
+
+export interface ApiIpamTreeResponse {
+  readonly generatedAt: string;
+  readonly vrfs: readonly Vrf[];
+  readonly prefixes: readonly Prefix[];
+  readonly ipAddresses: readonly Pick<IpAddress, "prefixId">[];
+  readonly hierarchy: ReturnType<typeof buildPrefixHierarchy>;
+  readonly utilization: readonly ApiIpamUtilizationEntry[];
+  readonly guidance: readonly string[];
+}
+
 const referenceTenants: readonly Tenant[] = [
   { id: "tenant-ops", slug: "operations", name: "Operations", status: "active" },
   { id: "tenant-net", slug: "network-engineering", name: "Network Engineering", status: "active" }
@@ -120,6 +145,11 @@ const referencePrefixes: readonly Prefix[] = [
     tenantId: "tenant-net",
     vlanId: "vlan-120"
   }
+] as const;
+
+const referenceVrfs: readonly Vrf[] = [
+  { id: "vrf-global", name: "Global Services", rd: "65000:10", tenantId: "tenant-net" },
+  { id: "vrf-campus", name: "Campus Access", rd: "65000:20", tenantId: "tenant-ops" }
 ] as const;
 
 const referenceAddresses: readonly IpAddress[] = [
@@ -507,6 +537,168 @@ function createTopologyResponse(): ApiTopologyResponse {
   };
 }
 
+function createIpamTreeResponse(): ApiIpamTreeResponse {
+  const prefixes: readonly Prefix[] = [
+    {
+      id: "prefix-global-root",
+      vrfId: "vrf-global",
+      parentPrefixId: null,
+      cidr: "10.40.0.0/16",
+      family: 4,
+      status: "active",
+      allocationMode: "hierarchical",
+      tenantId: "tenant-net",
+      vlanId: null
+    },
+    {
+      id: "prefix-global-services",
+      vrfId: "vrf-global",
+      parentPrefixId: "prefix-global-root",
+      cidr: "10.40.0.0/20",
+      family: 4,
+      status: "active",
+      allocationMode: "hierarchical",
+      tenantId: "tenant-net",
+      vlanId: null
+    },
+    {
+      id: "prefix-global-prod",
+      vrfId: "vrf-global",
+      parentPrefixId: "prefix-global-root",
+      cidr: "10.40.16.0/20",
+      family: 4,
+      status: "active",
+      allocationMode: "pool",
+      tenantId: "tenant-net",
+      vlanId: "vlan-120"
+    },
+    {
+      id: "prefix-global-apps",
+      vrfId: "vrf-global",
+      parentPrefixId: "prefix-global-prod",
+      cidr: "10.40.16.0/24",
+      family: 4,
+      status: "active",
+      allocationMode: "pool",
+      tenantId: "tenant-net",
+      vlanId: "vlan-120"
+    },
+    {
+      id: "prefix-global-storage",
+      vrfId: "vrf-global",
+      parentPrefixId: "prefix-global-prod",
+      cidr: "10.40.17.0/24",
+      family: 4,
+      status: "reserved",
+      allocationMode: "static",
+      tenantId: "tenant-net",
+      vlanId: "vlan-410"
+    },
+    {
+      id: "prefix-campus-root",
+      vrfId: "vrf-campus",
+      parentPrefixId: null,
+      cidr: "172.20.0.0/16",
+      family: 4,
+      status: "active",
+      allocationMode: "hierarchical",
+      tenantId: "tenant-ops",
+      vlanId: null
+    },
+    {
+      id: "prefix-campus-users",
+      vrfId: "vrf-campus",
+      parentPrefixId: "prefix-campus-root",
+      cidr: "172.20.10.0/24",
+      family: 4,
+      status: "active",
+      allocationMode: "pool",
+      tenantId: "tenant-ops",
+      vlanId: "vlan-220"
+    },
+    {
+      id: "prefix-campus-wireless",
+      vrfId: "vrf-campus",
+      parentPrefixId: "prefix-campus-root",
+      cidr: "172.20.20.0/24",
+      family: 4,
+      status: "active",
+      allocationMode: "pool",
+      tenantId: "tenant-ops",
+      vlanId: "vlan-221"
+    }
+  ];
+  const ipAddresses: readonly IpAddress[] = [
+    {
+      id: "ip-app-01",
+      vrfId: "vrf-global",
+      address: "10.40.16.10/24",
+      family: 4,
+      status: "active",
+      role: "primary",
+      prefixId: "prefix-global-apps",
+      interfaceId: "compute-01:eth0"
+    },
+    {
+      id: "ip-app-02",
+      vrfId: "vrf-global",
+      address: "10.40.16.11/24",
+      family: 4,
+      status: "active",
+      role: "primary",
+      prefixId: "prefix-global-apps",
+      interfaceId: "compute-02:eth0"
+    },
+    {
+      id: "ip-storage-01",
+      vrfId: "vrf-global",
+      address: "10.40.17.40/24",
+      family: 4,
+      status: "reserved",
+      role: "primary",
+      prefixId: "prefix-global-storage",
+      interfaceId: "storage-01:eth0"
+    },
+    {
+      id: "ip-campus-user-01",
+      vrfId: "vrf-campus",
+      address: "172.20.10.25/24",
+      family: 4,
+      status: "active",
+      role: "primary",
+      prefixId: "prefix-campus-users",
+      interfaceId: "access-01:vlan220"
+    },
+    {
+      id: "ip-campus-wireless-01",
+      vrfId: "vrf-campus",
+      address: "172.20.20.40/24",
+      family: 4,
+      status: "active",
+      role: "primary",
+      prefixId: "prefix-campus-wireless",
+      interfaceId: "wlc-01:vlan221"
+    }
+  ];
+  const hierarchyValidation = validatePrefixHierarchy(prefixes);
+  const hierarchy = buildPrefixHierarchy(prefixes);
+  const utilization = [...createPrefixUtilizationDirectory(prefixes, ipAddresses).values()];
+
+  return {
+    generatedAt: new Date().toISOString(),
+    vrfs: referenceVrfs,
+    prefixes,
+    ipAddresses: ipAddresses.map((address) => ({ prefixId: address.prefixId })),
+    hierarchy,
+    utilization,
+    guidance: [
+      hierarchyValidation.reason,
+      "VRFs are rendered as the top grouping boundary before prefix nesting begins.",
+      "Utilization bars are precomputed to keep the tree renderer focused on interaction."
+    ]
+  };
+}
+
 function createDomainResponse(): ApiOverviewResponse {
   const validPrefixes = referencePrefixes.filter((prefix) => validatePrefix(prefix).valid).length;
   const validAddresses = referenceAddresses.filter((address) => validateIpAddress(address).valid).length;
@@ -720,6 +912,12 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
   if (request.method === "GET" && requestUrl.pathname === "/api/topology/demo") {
     sendJson(response, 200, createTopologyResponse());
+
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/ipam-tree/demo") {
+    sendJson(response, 200, createIpamTreeResponse());
 
     return;
   }

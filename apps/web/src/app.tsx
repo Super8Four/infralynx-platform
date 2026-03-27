@@ -3,7 +3,9 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 
 import { shellNavigation, getNavigationItem, workspacePanels } from "../../../packages/ui/dist/index.js";
 import { RackElevation } from "./components/rack/RackElevation.js";
 import { TopologyGraph } from "./components/topology/TopologyGraph.js";
+import { IpamTree } from "./components/ipam-tree/IpamTree.js";
 import { useDomainOverview } from "./hooks/use-domain-overview.js";
+import { useIpamTree } from "./hooks/use-ipam-tree.js";
 import { useRackElevation } from "./hooks/use-rack-elevation.js";
 import { useTopologyGraph } from "./hooks/use-topology-graph.js";
 
@@ -30,6 +32,7 @@ export function App() {
   const [activeSection, setActiveSection] = useState(() => getSectionFromHash());
   const deferredSection = useDeferredValue(activeSection);
   const { status, data, errorMessage, retry } = useDomainOverview();
+  const ipamTree = useIpamTree();
   const rack = useRackElevation();
   const topology = useTopologyGraph();
 
@@ -73,6 +76,8 @@ export function App() {
   const visiblePanels = domainPanels.length > 0 ? domainPanels : fallbackPanels;
   const showRackStage =
     deferredSection === "dcim" && rack.status !== "error" && rack.data !== null;
+  const showIpamStage =
+    deferredSection === "ipam" && ipamTree.status !== "error" && ipamTree.data !== null;
   const showTopologyStage =
     deferredSection === "operations" && topology.status !== "error" && topology.data !== null;
 
@@ -202,6 +207,34 @@ export function App() {
         </section>
 
         <section className="shell__workspace-detail">
+          {ipamTree.status === "loading" && deferredSection === "ipam" ? (
+            <div className="shell__callout">
+              <strong>Loading IPAM hierarchy</strong>
+              <span>Precomputing VRF groups, prefix nesting, and utilization before rendering the tree.</span>
+              <div className="shell__loading-bar" aria-hidden="true" />
+            </div>
+          ) : null}
+
+          {ipamTree.status === "error" && deferredSection === "ipam" ? (
+            <div className="shell__callout shell__callout--error">
+              <strong>IPAM hierarchy unavailable</strong>
+              <span>{ipamTree.errorMessage}</span>
+              <button type="button" className="shell__button" onClick={ipamTree.retry}>
+                Retry IPAM fetch
+              </button>
+            </div>
+          ) : null}
+
+          {showIpamStage ? (
+            <IpamTree
+              rows={ipamTree.data.rows}
+              selectedNodeId={ipamTree.selectedNodeId}
+              syncedAt={ipamTree.data.syncedAt}
+              onSelectNode={ipamTree.selectNode}
+              onToggleNode={ipamTree.toggleNode}
+            />
+          ) : null}
+
           {rack.status === "loading" ? (
             <div className="shell__callout">
               <strong>Loading rack elevation</strong>
@@ -289,6 +322,9 @@ export function App() {
               <li key={notice}>{notice}</li>
             ))}
             {(showRackStage ? rack.data?.guidance ?? [] : []).map((notice) => (
+              <li key={notice}>{notice}</li>
+            ))}
+            {(showIpamStage ? ipamTree.data?.guidance ?? [] : []).map((notice) => (
               <li key={notice}>{notice}</li>
             ))}
             {(showTopologyStage ? topology.data?.guidance ?? [] : []).map((notice) => (

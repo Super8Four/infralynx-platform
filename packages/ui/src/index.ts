@@ -77,3 +77,4 @@ export function getNavigationItem(sectionId: string): NavigationItem {
 
 export * from "./rack-system/index.js";
 export * from "./topology/index.js";
+export * from "./ipam-tree/index.js";
