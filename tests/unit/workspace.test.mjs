@@ -28,20 +28,26 @@ import {
   validatePrefixHierarchyBinding
 } from "../../packages/network-domain/dist/index.js";
 import {
+  createInitialExpandedIpamTree,
+  createIpamTreeModel,
   createDefaultTopologyFilter,
   createRackUnitSlots,
+  flattenIpamTree,
   filterTopologyGraph,
   getDeviceCoverageLabel,
   shellNavigation,
   workspacePanels
 } from "../../packages/ui/dist/index.js";
 import {
+  buildPrefixHierarchy,
   canAllocateChildPrefix,
+  createPrefixUtilizationDirectory,
   createVlanDirectory,
   isValidRouteDistinguisher,
   isValidVlanId,
   validateIpAddress,
-  validatePrefix
+  validatePrefix,
+  validatePrefixHierarchy
 } from "../../packages/ipam-domain/dist/index.js";
 import { coreDomains, platformBoundaries } from "../../packages/domain-core/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
@@ -170,6 +176,61 @@ test("ipam scaffolds validate basic VRF, prefix, IP, and VLAN rules", () => {
   assert.equal(vlanDirectory.get(120)?.name, "Servers");
   assert.equal(isValidVlanId(4094), true);
   assert.equal(isValidRouteDistinguisher("65000:10"), true);
+});
+
+test("ipam hierarchy scaffolds keep prefix nesting and utilization explicit", () => {
+  const prefixes = [
+    {
+      id: "prefix-root",
+      vrfId: "vrf-1",
+      parentPrefixId: null,
+      cidr: "10.0.0.0/24",
+      family: 4,
+      status: "active",
+      allocationMode: "hierarchical",
+      tenantId: "tenant-1",
+      vlanId: null
+    },
+    {
+      id: "prefix-child",
+      vrfId: "vrf-1",
+      parentPrefixId: "prefix-root",
+      cidr: "10.0.0.0/26",
+      family: 4,
+      status: "active",
+      allocationMode: "pool",
+      tenantId: "tenant-1",
+      vlanId: null
+    }
+  ];
+  const addresses = [
+    {
+      id: "ip-1",
+      vrfId: "vrf-1",
+      address: "10.0.0.10/26",
+      family: 4,
+      status: "active",
+      role: "primary",
+      prefixId: "prefix-child",
+      interfaceId: "interface-1"
+    }
+  ];
+  const hierarchyValidation = validatePrefixHierarchy(prefixes);
+  const hierarchy = buildPrefixHierarchy(prefixes);
+  const utilization = createPrefixUtilizationDirectory(prefixes, addresses);
+  const tree = createIpamTreeModel(
+    [{ id: "vrf-1", name: "Global", rd: "65000:10" }],
+    hierarchy,
+    utilization,
+    addresses.map((address) => ({ prefixId: address.prefixId }))
+  );
+  const rows = flattenIpamTree(tree, createInitialExpandedIpamTree(tree));
+
+  assert.equal(hierarchyValidation.valid, true);
+  assert.equal(hierarchy.roots[0], "prefix-root");
+  assert.equal(hierarchy.nodes.get("prefix-root")?.childPrefixIds[0], "prefix-child");
+  assert.equal(utilization.get("prefix-child")?.directIpCount, 1);
+  assert.equal(rows.some((row) => row.id === "prefix-child"), true);
 });
 
 test("dcim scaffolds validate rack occupancy and cable endpoints", () => {
