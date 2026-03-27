@@ -1,7 +1,7 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 
-import { workspaceMetadata } from "../../../packages/config/dist/index.js";
-import { shellNavigation, workspacePanels, getNavigationItem } from "../../../packages/ui/dist/index.js";
+import { shellNavigation, getNavigationItem, workspacePanels } from "../../../packages/ui/dist/index.js";
+import { useDomainOverview } from "./hooks/use-domain-overview.js";
 
 function getSectionFromHash(): string {
   const hash = window.location.hash.replace(/^#/, "");
@@ -9,9 +9,23 @@ function getSectionFromHash(): string {
   return shellNavigation.some((item) => item.id === hash) ? hash : "overview";
 }
 
+function formatSyncTime(timestamp: string | null): string {
+  if (!timestamp) {
+    return "Waiting for API";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(timestamp));
+}
+
 export function App() {
   const [activeSection, setActiveSection] = useState(() => getSectionFromHash());
   const deferredSection = useDeferredValue(activeSection);
+  const { status, data, errorMessage, retry } = useDomainOverview();
 
   useEffect(() => {
     const onHashChange = () => {
@@ -26,11 +40,31 @@ export function App() {
   }, []);
 
   const activeItem = useMemo(() => getNavigationItem(deferredSection), [deferredSection]);
-
   const navigation = shellNavigation.map((item) => ({
     ...item,
     active: item.id === activeSection
   }));
+  const activeDomain = useMemo(
+    () => data?.domains.find((domain) => domain.id === deferredSection) ?? data?.domains[0] ?? null,
+    [data, deferredSection]
+  );
+  const domainPanels = useMemo(
+    () => data?.domains.filter((domain) => domain.id !== "overview") ?? [],
+    [data]
+  );
+  const fallbackPanels = workspacePanels.map((panel) => ({
+    id: panel.id,
+    title: panel.title,
+    statusLabel: "Static",
+    tone: "planned" as const,
+    summary: panel.summary,
+    metrics: panel.indicators.slice(0, 3).map((indicator, index) => ({
+      label: `Signal ${index + 1}`,
+      value: indicator
+    })),
+    indicators: panel.indicators
+  }));
+  const visiblePanels = domainPanels.length > 0 ? domainPanels : fallbackPanels;
 
   return (
     <div className="shell">
@@ -59,39 +93,79 @@ export function App() {
 
         <div className="shell__rail-footer">
           <p>Workspace state</p>
-          <strong>Structured for multi-domain delivery</strong>
+          <strong>{status === "ready" ? "Live domain summary connected" : "Waiting for backend data"}</strong>
         </div>
       </aside>
 
       <main className="shell__workspace">
         <header className="shell__header">
           <div>
-            <p className="shell__eyebrow">UI shell baseline</p>
-            <h1>{workspaceMetadata.name}</h1>
+            <p className="shell__eyebrow">UI data integration layer</p>
+            <h1>{data?.workspaceName ?? "InfraLynx Platform"}</h1>
           </div>
 
           <div className="shell__header-meta">
-            <span>Active section</span>
-            <strong>{activeItem.label}</strong>
+            <span>Last synced</span>
+            <strong>{formatSyncTime(data?.syncedAt ?? null)}</strong>
           </div>
         </header>
 
         <section className="shell__hero" id={activeItem.id}>
           <div className="shell__hero-copy">
-            <p className="shell__eyebrow">Operational shell</p>
-            <h2>One workspace for physical, logical, and policy infrastructure.</h2>
+            <p className="shell__eyebrow">{status === "ready" ? activeItem.label : "Data status"}</p>
+            <h2>
+              {status === "loading" && "Synchronizing backend domain summaries."}
+              {status === "error" && "Domain data is temporarily unavailable."}
+              {status === "ready" && activeDomain?.title}
+              {status === "idle" && "Preparing the InfraLynx workspace."}
+            </h2>
             <p>
-              The first UI layer separates domains clearly, keeps navigation persistent, and leaves
-              room for deep operational surfaces without collapsing into dashboard-card clutter.
+              {status === "ready" && activeDomain?.summary}
+              {status === "loading" &&
+                "The shell is requesting normalized domain payloads from the InfraLynx API and preparing workspace-ready view models."}
+              {status === "error" && errorMessage}
+              {status === "idle" &&
+                "The UI keeps navigation stable while the first domain snapshot is assembled."}
             </p>
+
+            {status === "error" ? (
+              <div className="shell__callout shell__callout--error">
+                <strong>Fetch failed</strong>
+                <span>{errorMessage}</span>
+                <button type="button" className="shell__button" onClick={retry}>
+                  Retry fetch
+                </button>
+              </div>
+            ) : null}
+
+            {status === "loading" ? (
+              <div className="shell__callout">
+                <strong>Loading domain snapshot</strong>
+                <span>Transport, normalization, and state reduction are all in progress.</span>
+                <div className="shell__loading-bar" aria-hidden="true" />
+              </div>
+            ) : null}
           </div>
 
           <div className="shell__hero-grid" aria-label="Domain overview">
-            {workspacePanels.map((panel) => (
-              <article key={panel.id} className="shell__panel">
-                <p className="shell__panel-eyebrow">{panel.eyebrow}</p>
+            {visiblePanels.map((panel) => (
+              <article key={panel.id} className={`shell__panel shell__panel--${panel.tone}`}>
+                <div className="shell__panel-header">
+                  <p className="shell__panel-eyebrow">{panel.statusLabel}</p>
+                  <span className={`shell__status-badge shell__status-badge--${panel.tone}`}>
+                    {panel.statusLabel}
+                  </span>
+                </div>
                 <h3>{panel.title}</h3>
                 <p>{panel.summary}</p>
+                <div className="shell__metric-grid">
+                  {panel.metrics.map((metric) => (
+                    <div key={`${panel.id}-${metric.label}`} className="shell__metric">
+                      <span>{metric.label}</span>
+                      <strong>{metric.value}</strong>
+                    </div>
+                  ))}
+                </div>
                 <ul>
                   {panel.indicators.map((indicator) => (
                     <li key={indicator}>{indicator}</li>
@@ -104,16 +178,16 @@ export function App() {
 
         <section className="shell__strip">
           <div>
-            <span>Navigation model</span>
-            <strong>Persistent left rail with domain-first wayfinding</strong>
+            <span>Data contract</span>
+            <strong>{data?.boundary ?? "Normalized UI contract pending"}</strong>
           </div>
           <div>
-            <span>Surface model</span>
-            <strong>Primary workspace plus contextual right rail</strong>
+            <span>Runtime</span>
+            <strong>{data?.runtime ?? "Awaiting backend metadata"}</strong>
           </div>
           <div>
-            <span>Design baseline</span>
-            <strong>Dark-first shell with restrained accent signaling</strong>
+            <span>Transport state</span>
+            <strong>{status === "ready" ? "Healthy fetch cycle" : status === "error" ? "Retry required" : "Loading"}</strong>
           </div>
         </section>
       </main>
@@ -121,20 +195,24 @@ export function App() {
       <aside className="shell__context">
         <section className="shell__context-block">
           <p className="shell__eyebrow">Current focus</p>
-          <h3>{activeItem.label}</h3>
+          <h3>{activeDomain?.title ?? activeItem.label}</h3>
           <p>
-            Navigation changes are hash-driven so the shell works immediately without backend
-            routing. Domain apps can replace the central workspace later without reworking the outer
-            frame.
+            {status === "ready"
+              ? activeDomain?.summary
+              : "The context rail remains stable while service, hook, and state layers converge on a normalized UI payload."}
           </p>
         </section>
 
         <section className="shell__context-block">
-          <p className="shell__eyebrow">Shell decisions</p>
+          <p className="shell__eyebrow">Integration notes</p>
           <ul className="shell__notes">
-            <li>Navigation remains domain-led instead of feature-led.</li>
-            <li>Context rail is reserved for status, selection, and workflow cues.</li>
-            <li>Shared UI tokens live in `@infralynx/ui` to prevent app-only drift.</li>
+            {(data?.notices ?? [
+              "API requests are isolated in src/services.",
+              "State transitions are isolated in src/state.",
+              "React hooks own loading and retry orchestration."
+            ]).map((notice) => (
+              <li key={notice}>{notice}</li>
+            ))}
           </ul>
         </section>
       </aside>
