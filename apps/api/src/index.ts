@@ -43,6 +43,48 @@ export interface ApiOverviewResponse {
   readonly notices: readonly string[];
 }
 
+export interface ApiRackPortResponse {
+  readonly id: string;
+  readonly label: string;
+  readonly side: "left" | "right";
+  readonly status: "connected" | "available" | "disabled";
+  readonly cableId: string | null;
+  readonly peerPortLabel: string | null;
+}
+
+export interface ApiRackDeviceResponse {
+  readonly id: string;
+  readonly name: string;
+  readonly role: string;
+  readonly tone: "network" | "compute" | "power" | "storage";
+  readonly startUnit: number;
+  readonly heightUnits: number;
+  readonly ports: readonly ApiRackPortResponse[];
+}
+
+export interface ApiRackCableResponse {
+  readonly id: string;
+  readonly fromDeviceId: string;
+  readonly fromPortId: string;
+  readonly fromPortLabel: string;
+  readonly toDeviceId: string;
+  readonly toPortId: string;
+  readonly toPortLabel: string;
+}
+
+export interface ApiRackResponse {
+  readonly generatedAt: string;
+  readonly rack: {
+    readonly id: string;
+    readonly name: string;
+    readonly siteName: string;
+    readonly totalUnits: number;
+    readonly devices: readonly ApiRackDeviceResponse[];
+    readonly cables: readonly ApiRackCableResponse[];
+  };
+  readonly guidance: readonly string[];
+}
+
 const referenceTenants: readonly Tenant[] = [
   { id: "tenant-ops", slug: "operations", name: "Operations", status: "active" },
   { id: "tenant-net", slug: "network-engineering", name: "Network Engineering", status: "active" }
@@ -115,6 +157,201 @@ const referenceRacks: readonly Rack[] = [
   { id: "rack-a1", siteId: "site-dal1", name: "A1", totalUnits: 42 },
   { id: "rack-a2", siteId: "site-dal1", name: "A2", totalUnits: 42 }
 ] as const;
+
+function createRackResponse(): ApiRackResponse {
+  return {
+    generatedAt: new Date().toISOString(),
+    rack: {
+      id: "rack-a1",
+      name: "A1",
+      siteName: "Dallas One",
+      totalUnits: 42,
+      devices: [
+        {
+          id: "device-leaf-sw1",
+          name: "leaf-sw1",
+          role: "Top-of-rack switch",
+          tone: "network",
+          startUnit: 40,
+          heightUnits: 2,
+          ports: [
+            {
+              id: "port-leaf-sw1-1",
+              label: "xe-0/0/1",
+              side: "left",
+              status: "connected",
+              cableId: "cable-leaf-a",
+              peerPortLabel: "xe-0/0/1"
+            },
+            {
+              id: "port-leaf-sw1-2",
+              label: "xe-0/0/2",
+              side: "right",
+              status: "connected",
+              cableId: "cable-host-a",
+              peerPortLabel: "eth0"
+            },
+            {
+              id: "port-leaf-sw1-mgmt",
+              label: "mgmt0",
+              side: "left",
+              status: "available",
+              cableId: null,
+              peerPortLabel: null
+            }
+          ]
+        },
+        {
+          id: "device-leaf-sw2",
+          name: "leaf-sw2",
+          role: "Top-of-rack switch",
+          tone: "network",
+          startUnit: 38,
+          heightUnits: 2,
+          ports: [
+            {
+              id: "port-leaf-sw2-1",
+              label: "xe-0/0/1",
+              side: "left",
+              status: "connected",
+              cableId: "cable-leaf-a",
+              peerPortLabel: "xe-0/0/1"
+            },
+            {
+              id: "port-leaf-sw2-2",
+              label: "xe-0/0/2",
+              side: "right",
+              status: "connected",
+              cableId: "cable-host-b",
+              peerPortLabel: "eth0"
+            },
+            {
+              id: "port-leaf-sw2-mgmt",
+              label: "mgmt0",
+              side: "left",
+              status: "available",
+              cableId: null,
+              peerPortLabel: null
+            }
+          ]
+        },
+        {
+          id: "device-server-01",
+          name: "compute-01",
+          role: "Application host",
+          tone: "compute",
+          startUnit: 30,
+          heightUnits: 2,
+          ports: [
+            {
+              id: "port-server-01-eth0",
+              label: "eth0",
+              side: "left",
+              status: "connected",
+              cableId: "cable-host-a",
+              peerPortLabel: "xe-0/0/2"
+            },
+            {
+              id: "port-server-01-eth1",
+              label: "eth1",
+              side: "right",
+              status: "available",
+              cableId: null,
+              peerPortLabel: null
+            }
+          ]
+        },
+        {
+          id: "device-server-02",
+          name: "compute-02",
+          role: "Application host",
+          tone: "compute",
+          startUnit: 26,
+          heightUnits: 2,
+          ports: [
+            {
+              id: "port-server-02-eth0",
+              label: "eth0",
+              side: "left",
+              status: "connected",
+              cableId: "cable-host-b",
+              peerPortLabel: "xe-0/0/2"
+            },
+            {
+              id: "port-server-02-eth1",
+              label: "eth1",
+              side: "right",
+              status: "disabled",
+              cableId: null,
+              peerPortLabel: null
+            }
+          ]
+        },
+        {
+          id: "device-pdu-a",
+          name: "pdu-a",
+          role: "Power distribution",
+          tone: "power",
+          startUnit: 10,
+          heightUnits: 4,
+          ports: [
+            {
+              id: "port-pdu-a-feed1",
+              label: "feed-a",
+              side: "left",
+              status: "connected",
+              cableId: "cable-power-a",
+              peerPortLabel: "psu-a"
+            }
+          ]
+        }
+      ],
+      cables: [
+        {
+          id: "cable-leaf-a",
+          fromDeviceId: "device-leaf-sw1",
+          fromPortId: "port-leaf-sw1-1",
+          fromPortLabel: "xe-0/0/1",
+          toDeviceId: "device-leaf-sw2",
+          toPortId: "port-leaf-sw2-1",
+          toPortLabel: "xe-0/0/1"
+        },
+        {
+          id: "cable-host-a",
+          fromDeviceId: "device-leaf-sw1",
+          fromPortId: "port-leaf-sw1-2",
+          fromPortLabel: "xe-0/0/2",
+          toDeviceId: "device-server-01",
+          toPortId: "port-server-01-eth0",
+          toPortLabel: "eth0"
+        },
+        {
+          id: "cable-host-b",
+          fromDeviceId: "device-leaf-sw2",
+          fromPortId: "port-leaf-sw2-2",
+          fromPortLabel: "xe-0/0/2",
+          toDeviceId: "device-server-02",
+          toPortId: "port-server-02-eth0",
+          toPortLabel: "eth0"
+        },
+        {
+          id: "cable-power-a",
+          fromDeviceId: "device-pdu-a",
+          fromPortId: "port-pdu-a-feed1",
+          fromPortLabel: "feed-a",
+          toDeviceId: "device-server-01",
+          toPortId: "port-server-01-eth0",
+          toPortLabel: "psu-a"
+        }
+      ]
+    },
+    guidance: [
+      "Devices are positioned by explicit starting U and height.",
+      "Port chips are selectable and cable relationships stay explicit.",
+      "Basic cable rendering is intentionally lightweight until topology visualization lands."
+    ]
+  };
+}
 
 function createDomainResponse(): ApiOverviewResponse {
   const validPrefixes = referencePrefixes.filter((prefix) => validatePrefix(prefix).valid).length;
@@ -317,6 +554,12 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
   if (request.method === "GET" && requestUrl.pathname === "/api/overview") {
     sendJson(response, 200, createDomainResponse());
+
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/racks/demo") {
+    sendJson(response, 200, createRackResponse());
 
     return;
   }
