@@ -12,6 +12,7 @@
     "@infralynx/auth": "*",
     "@infralynx/config": "*",
     "@infralynx/core-domain": "*",
+    "@infralynx/data-transfer": "*",
     "@infralynx/job-core": "*",
     "@infralynx/job-queue": "*",
     "@infralynx/domain-core": "*",

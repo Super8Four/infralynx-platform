@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 
 const paths = [
   "apps/api/dist",
@@ -33,6 +33,8 @@ const paths = [
   "packages/media-storage/tsconfig.tsbuildinfo",
   "packages/network-domain/dist",
   "packages/network-domain/tsconfig.tsbuildinfo",
+  "packages/data-transfer/dist",
+  "packages/data-transfer/tsconfig.tsbuildinfo",
   "packages/ui/dist",
   "packages/ui/tsconfig.tsbuildinfo",
   "packages/shared/dist",
@@ -57,3 +59,5 @@ for (const path of paths) {
     throw error;
   }
 }
+
+mkdirSync("runtime-data", { recursive: true });

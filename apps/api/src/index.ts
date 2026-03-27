@@ -35,6 +35,8 @@ import {
   validateInterfaceVlanBinding,
   validateTopologyEdge
 } from "../../../packages/network-domain/dist/index.js";
+import { handleExportApiRequest } from "./export/index.js";
+import { handleImportApiRequest } from "./import/index.js";
 import { handleJobsApiRequest } from "./jobs/index.js";
 import { handleMediaApiRequest } from "./media/index.js";
 
@@ -1176,6 +1178,36 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
         : "all";
 
     sendJson(response, 200, createSearchResponse(requestUrl.searchParams.get("q") ?? "", domain));
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/import")) {
+    void handleImportApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/export")) {
+    void handleExportApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
 
     return;
   }

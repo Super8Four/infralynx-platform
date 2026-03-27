@@ -1,4 +1,5 @@
 import type { JobRecord } from "../../../../packages/job-core/dist/index.js";
+import { executeImportJobPayload } from "../../../../packages/data-transfer/dist/index.js";
 
 export type JobHandler = (job: JobRecord) => Promise<Record<string, unknown>>;
 
@@ -21,5 +22,7 @@ export const jobHandlers: Readonly<Record<string, JobHandler>> = {
     return {
       recoveredAtAttempt: currentAttempt
     };
-  }
+  },
+  "data-transfer.import": async (job) => executeImportJobPayload(job.payload)
+  
 };

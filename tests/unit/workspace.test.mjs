@@ -71,6 +71,12 @@ import {
   resetFileBackedJobQueueStore
 } from "../../packages/job-queue/dist/index.js";
 import {
+  applyImport,
+  executeImportJobPayload,
+  exportDataset,
+  validateImportInput
+} from "../../packages/data-transfer/dist/index.js";
+import {
   createFileBackedMediaRepository,
   createMediaLinks,
   createMediaRecord,
@@ -680,4 +686,60 @@ test("media scaffolds enforce RBAC-aware access decisions", () => {
 
   assert.equal(writerDecision.allowed, true);
   assert.equal(auditorDecision.allowed, false);
+});
+
+test("data transfer scaffolds validate, commit, and export transfer datasets", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-transfer-"));
+  const statePath = join(tempRoot, "state.json");
+
+  try {
+    const validation = validateImportInput({
+      dataset: "tenants",
+      format: "csv",
+      csvContent: "id,slug,name,status\ntenant-apps,apps,Applications,active"
+    });
+    const committed = applyImport(statePath, {
+      dataset: "tenants",
+      format: "csv",
+      csvContent: "id,slug,name,status\ntenant-apps,apps,Applications,active"
+    });
+    const exportedCsv = exportDataset(statePath, "tenants", "csv");
+    const exportedApi = exportDataset(statePath, "tenants", "api");
+
+    assert.equal(validation.valid, true);
+    assert.equal(validation.recordCount, 1);
+    assert.equal(committed.committed, true);
+    assert.match(exportedCsv.body, /tenant-apps/);
+    assert.match(exportedApi.body, /Applications/);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("data transfer job payloads execute import summaries for worker processing", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-transfer-job-"));
+  const statePath = join(tempRoot, "state.json");
+
+  try {
+    const result = executeImportJobPayload({
+      dataset: "sites",
+      format: "api",
+      dryRun: false,
+      stateFilePath: statePath,
+      records: [
+        {
+          id: "site-chi1",
+          slug: "chi1",
+          name: "Chicago One",
+          tenantId: "tenant-ops"
+        }
+      ]
+    });
+
+    assert.equal(result.valid, true);
+    assert.equal(result.committed, true);
+    assert.equal(result.recordCount, 1);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
