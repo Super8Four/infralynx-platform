@@ -1,10 +1,3 @@
-export interface NavigationItem {
-  readonly id: string;
-  readonly label: string;
-  readonly domain: string;
-  readonly accent: string;
-}
-
 export interface WorkspacePanel {
   readonly id: string;
   readonly title: string;
@@ -36,15 +29,6 @@ export const uiTokens = {
   }
 } as const;
 
-export const shellNavigation: readonly NavigationItem[] = [
-  { id: "overview", label: "Overview", domain: "program", accent: "var(--ui-accent)" },
-  { id: "core", label: "Core Platform", domain: "core", accent: "var(--ui-accent-cool)" },
-  { id: "ipam", label: "IPAM", domain: "ipam", accent: "var(--ui-accent)" },
-  { id: "dcim", label: "DCIM", domain: "dcim", accent: "var(--ui-accent-signal)" },
-  { id: "automation", label: "Automation", domain: "automation", accent: "var(--ui-accent-cool)" },
-  { id: "operations", label: "Operations", domain: "operations", accent: "var(--ui-accent)" }
-] as const;
-
 export const workspacePanels: readonly WorkspacePanel[] = [
   {
     id: "core",
@@ -69,12 +53,7 @@ export const workspacePanels: readonly WorkspacePanel[] = [
   }
 ] as const;
 
-export function getNavigationItem(sectionId: string): NavigationItem {
-  const match = shellNavigation.find((item) => item.id === sectionId);
-
-  return match ?? shellNavigation[0];
-}
-
 export * from "./rack-system/index.js";
 export * from "./topology/index.js";
 export * from "./ipam-tree/index.js";
+export * from "./navigation/index.js";

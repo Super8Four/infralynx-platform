@@ -1,6 +1,15 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 
-import { shellNavigation, getNavigationItem, workspacePanels } from "../../../packages/ui/dist/index.js";
+import {
+  getNavigationBreadcrumbs,
+  getNavigationGroups,
+  getNavigationRoute,
+  mapDataDomainToRouteId,
+  workspacePanels
+} from "../../../packages/ui/dist/index.js";
+import { Breadcrumbs } from "./components/navigation/Breadcrumbs.js";
+import { ContextNavigation } from "./components/navigation/ContextNavigation.js";
+import { SidebarNavigation } from "./components/navigation/SidebarNavigation.js";
 import { GlobalSearch } from "./components/search/GlobalSearch.js";
 import { RackElevation } from "./components/rack/RackElevation.js";
 import { TopologyGraph } from "./components/topology/TopologyGraph.js";
@@ -10,12 +19,22 @@ import { useGlobalSearch } from "./hooks/use-global-search.js";
 import { useIpamTree } from "./hooks/use-ipam-tree.js";
 import { useRackElevation } from "./hooks/use-rack-elevation.js";
 import { useTopologyGraph } from "./hooks/use-topology-graph.js";
+import { AppShell } from "./layout/AppShell.js";
 import type { UiSearchResult } from "./services/search/global-search.js";
 
 function getSectionFromHash(): string {
   const hash = window.location.hash.replace(/^#/, "");
+  const knownIds = new Set([
+    "overview",
+    "core",
+    "ipam",
+    "dcim",
+    "networking",
+    "virtualization",
+    "automation"
+  ]);
 
-  return shellNavigation.some((item) => item.id === hash) ? hash : "overview";
+  return knownIds.has(hash) ? hash : "overview";
 }
 
 function formatSyncTime(timestamp: string | null): string {
@@ -52,18 +71,52 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  const activeItem = useMemo(() => getNavigationItem(deferredSection), [deferredSection]);
-  const navigation = shellNavigation.map((item) => ({
-    ...item,
-    active: item.id === activeSection
-  }));
+  const navigationGroups = useMemo(() => getNavigationGroups(), []);
+  const activeRoute = useMemo(() => getNavigationRoute(deferredSection), [deferredSection]);
+  const breadcrumbs = useMemo(() => getNavigationBreadcrumbs(deferredSection), [deferredSection]);
   const activeDomain = useMemo(
-    () => data?.domains.find((domain) => domain.id === deferredSection) ?? data?.domains[0] ?? null,
-    [data, deferredSection]
+    () =>
+      data?.domains.find((domain) => domain.id === activeRoute.dataDomainId) ??
+      (activeRoute.id === "overview" ? data?.domains[0] ?? null : null),
+    [activeRoute, data]
   );
-  const domainPanels = useMemo(
-    () => data?.domains.filter((domain) => domain.id !== "overview") ?? [],
-    [data]
+  const domainPanels = useMemo(() => {
+    return navigationGroups
+      .flatMap((group) => group.routes)
+      .filter((route) => route.id !== "overview")
+      .map((route) => {
+        const domain = data?.domains.find((item) => item.id === route.dataDomainId);
+
+        if (domain) {
+          return {
+            id: route.id,
+            title: route.label,
+            statusLabel: domain.statusLabel,
+            tone: domain.tone,
+            summary: domain.summary,
+            metrics: domain.metrics,
+            indicators: domain.indicators
+          };
+        }
+
+        return {
+          id: route.id,
+          title: route.label,
+          statusLabel: route.id === "virtualization" ? "Reserved" : "Planned",
+          tone: "planned" as const,
+          summary: route.summary,
+          metrics: [
+            { label: "State", value: route.id === "virtualization" ? "Reserved" : "Planned" },
+            { label: "Mode", value: "Navigation-ready" },
+            { label: "Source", value: "Shell model" }
+          ],
+          indicators: route.contextLinks.map((link) => link.label)
+        };
+      });
+  }, [data, navigationGroups]);
+  const activePanel = useMemo(
+    () => domainPanels.find((panel) => panel.id === activeRoute.id) ?? domainPanels[0] ?? null,
+    [activeRoute.id, domainPanels]
   );
   const fallbackPanels = workspacePanels.map((panel) => ({
     id: panel.id,
@@ -79,88 +132,95 @@ export function App() {
   }));
   const visiblePanels = domainPanels.length > 0 ? domainPanels : fallbackPanels;
   const showRackStage =
-    deferredSection === "dcim" && rack.status !== "error" && rack.data !== null;
+    activeRoute.id === "dcim" && rack.status !== "error" && rack.data !== null;
   const showIpamStage =
-    deferredSection === "ipam" && ipamTree.status !== "error" && ipamTree.data !== null;
+    activeRoute.id === "ipam" && ipamTree.status !== "error" && ipamTree.data !== null;
   const showTopologyStage =
-    deferredSection === "operations" && topology.status !== "error" && topology.data !== null;
+    activeRoute.id === "networking" && topology.status !== "error" && topology.data !== null;
 
   const handleSearchResultSelect = (result: UiSearchResult) => {
     search.selectResult(result.id);
+    const routeId = mapDataDomainToRouteId(result.domain);
+
     startTransition(() => {
-      setActiveSection(result.domain);
+      setActiveSection(routeId);
     });
-    window.location.hash = result.domain;
+    window.location.hash = routeId;
   };
 
   return (
-    <div className="shell">
-      <aside className="shell__rail">
-        <div className="shell__brand">
-          <span className="shell__brand-mark" />
-          <div>
-            <p>InfraLynx</p>
-            <span>Enterprise infrastructure control plane</span>
-          </div>
-        </div>
-
-        <nav className="shell__nav" aria-label="Primary">
-          {navigation.map((item) => (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              className={item.active ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
-              style={{ "--nav-accent": item.accent } as React.CSSProperties}
-            >
-              <span>{item.label}</span>
-              <small>{item.domain}</small>
-            </a>
-          ))}
-        </nav>
-
-        <div className="shell__rail-footer">
-          <p>Workspace state</p>
-          <strong>{status === "ready" ? "Live domain summary connected" : "Waiting for backend data"}</strong>
-        </div>
-      </aside>
-
-      <main className="shell__workspace">
-        <header className="shell__header">
-          <div>
-            <p className="shell__eyebrow">UI data integration layer</p>
-            <h1>{data?.workspaceName ?? "InfraLynx Platform"}</h1>
+    <AppShell
+      brand={
+        <>
+          <div className="shell__brand">
+            <span className="shell__brand-mark" />
+            <div>
+              <p>InfraLynx</p>
+              <span>Enterprise infrastructure control plane</span>
+            </div>
           </div>
 
-          <div className="shell__header-meta">
-            <span>Last synced</span>
-            <strong>{formatSyncTime(data?.syncedAt ?? null)}</strong>
+          <div className="shell__rail-footer">
+            <p>Workspace state</p>
+            <strong>{status === "ready" ? "Live domain summary connected" : "Waiting for backend data"}</strong>
+          </div>
+        </>
+      }
+      sidebar={<SidebarNavigation groups={navigationGroups} activeRouteId={activeRoute.id} />}
+      topbar={
+        <header className="shell__topbar">
+          <div className="shell__topbar-main">
+            <Breadcrumbs items={breadcrumbs} />
+            <div className="shell__topbar-heading">
+              <p className="shell__eyebrow">Navigation refinement</p>
+              <h1>{data?.workspaceName ?? "InfraLynx Platform"}</h1>
+            </div>
+          </div>
+
+          <div className="shell__topbar-side">
+            <div className="shell__header-meta">
+              <span>Last synced</span>
+              <strong>{formatSyncTime(data?.syncedAt ?? null)}</strong>
+            </div>
+
+            <div className="shell__topbar-actions">
+              {activeRoute.actions.map((action) => (
+                <a key={action.id} href={action.href} className="shell__action-pill">
+                  {action.label}
+                </a>
+              ))}
+            </div>
           </div>
         </header>
+      }
+      content={
+        <>
+          <div id="section-search">
+            <GlobalSearch
+              status={search.status}
+              query={search.query}
+              selectedDomain={search.selectedDomain}
+              data={search.data}
+              errorMessage={search.errorMessage}
+              selectedResultId={search.selectedResultId}
+              onQueryChange={search.updateQuery}
+              onDomainChange={search.updateDomain}
+              onResultSelect={handleSearchResultSelect}
+              onRetry={search.retry}
+            />
+          </div>
 
-        <GlobalSearch
-          status={search.status}
-          query={search.query}
-          selectedDomain={search.selectedDomain}
-          data={search.data}
-          errorMessage={search.errorMessage}
-          selectedResultId={search.selectedResultId}
-          onQueryChange={search.updateQuery}
-          onDomainChange={search.updateDomain}
-          onResultSelect={handleSearchResultSelect}
-          onRetry={search.retry}
-        />
-
-        <section className="shell__hero" id={activeItem.id}>
+          <section className="shell__hero" id="section-brief">
           <div className="shell__hero-copy">
-            <p className="shell__eyebrow">{status === "ready" ? activeItem.label : "Data status"}</p>
+            <p className="shell__eyebrow">{activeRoute.label}</p>
             <h2>
               {status === "loading" && "Synchronizing backend domain summaries."}
               {status === "error" && "Domain data is temporarily unavailable."}
-              {status === "ready" && activeDomain?.title}
+              {status === "ready" && activeRoute.label}
               {status === "idle" && "Preparing the InfraLynx workspace."}
             </h2>
             <p>
-              {status === "ready" && activeDomain?.summary}
+              {status === "ready" && (activeDomain?.summary ?? activeRoute.summary)}
               {status === "loading" &&
                 "The shell is requesting normalized domain payloads from the InfraLynx API and preparing workspace-ready view models."}
               {status === "error" && errorMessage}
@@ -189,7 +249,12 @@ export function App() {
 
           <div className="shell__hero-grid" aria-label="Domain overview">
             {visiblePanels.map((panel) => (
-              <article key={panel.id} className={`shell__panel shell__panel--${panel.tone}`}>
+              <article
+                key={panel.id}
+                className={`shell__panel shell__panel--${panel.tone} ${
+                  panel.id === activeRoute.id ? "shell__panel--active" : ""
+                }`}
+              >
                 <div className="shell__panel-header">
                   <p className="shell__panel-eyebrow">{panel.statusLabel}</p>
                   <span className={`shell__status-badge shell__status-badge--${panel.tone}`}>
@@ -214,25 +279,25 @@ export function App() {
               </article>
             ))}
           </div>
-        </section>
+          </section>
 
-        <section className="shell__strip">
+          <section className="shell__strip">
           <div>
-            <span>Data contract</span>
-            <strong>{data?.boundary ?? "Normalized UI contract pending"}</strong>
+            <span>Domain</span>
+            <strong>{activeRoute.domainLabel}</strong>
           </div>
           <div>
-            <span>Runtime</span>
-            <strong>{data?.runtime ?? "Awaiting backend metadata"}</strong>
+            <span>Hierarchy</span>
+            <strong>{breadcrumbs.map((item) => item.label).join(" / ")}</strong>
           </div>
           <div>
-            <span>Transport state</span>
-            <strong>{status === "ready" ? "Healthy fetch cycle" : status === "error" ? "Retry required" : "Loading"}</strong>
+            <span>Layout state</span>
+            <strong>{activePanel?.statusLabel ?? (status === "ready" ? "Stable" : "Loading")}</strong>
           </div>
-        </section>
+          </section>
 
-        <section className="shell__workspace-detail">
-          {ipamTree.status === "loading" && deferredSection === "ipam" ? (
+          <section className="shell__workspace-detail" id="section-workspace">
+          {ipamTree.status === "loading" && activeRoute.id === "ipam" ? (
             <div className="shell__callout">
               <strong>Loading IPAM hierarchy</strong>
               <span>Precomputing VRF groups, prefix nesting, and utilization before rendering the tree.</span>
@@ -240,7 +305,7 @@ export function App() {
             </div>
           ) : null}
 
-          {ipamTree.status === "error" && deferredSection === "ipam" ? (
+          {ipamTree.status === "error" && activeRoute.id === "ipam" ? (
             <div className="shell__callout shell__callout--error">
               <strong>IPAM hierarchy unavailable</strong>
               <span>{ipamTree.errorMessage}</span>
@@ -288,7 +353,7 @@ export function App() {
             />
           ) : null}
 
-          {topology.status === "loading" && deferredSection === "operations" ? (
+          {topology.status === "loading" && activeRoute.id === "networking" ? (
             <div className="shell__callout">
               <strong>Loading topology graph</strong>
               <span>Assembling the filtered graph model, node layout, and interactive viewport state.</span>
@@ -296,7 +361,7 @@ export function App() {
             </div>
           ) : null}
 
-          {topology.status === "error" && deferredSection === "operations" ? (
+          {topology.status === "error" && activeRoute.id === "networking" ? (
             <div className="shell__callout shell__callout--error">
               <strong>Topology visualization unavailable</strong>
               <span>{topology.errorMessage}</span>
@@ -322,16 +387,41 @@ export function App() {
               onResetViewport={topology.resetViewport}
             />
           ) : null}
-        </section>
-      </main>
+          {!showIpamStage && !showRackStage && !showTopologyStage ? (
+            <section className="shell__placeholder-stage">
+              <div className="shell__placeholder-copy">
+                <p className="shell__eyebrow">{activeRoute.domainLabel}</p>
+                <h3>{activeRoute.label}</h3>
+                <p>{activeRoute.summary}</p>
+              </div>
 
-      <aside className="shell__context">
+              <div className="shell__placeholder-grid">
+                {activeRoute.contextLinks.map((link) => (
+                  <a key={link.id} href={link.href} className="shell__placeholder-link">
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </section>
+          ) : null}
+          </section>
+        </>
+      }
+      context={
+        <>
+        <div id="section-context">
+          <ContextNavigation
+            route={activeRoute}
+            actions={activeRoute.actions}
+            contextLinks={activeRoute.contextLinks}
+          />
+        </div>
         <section className="shell__context-block">
           <p className="shell__eyebrow">Current focus</p>
-          <h3>{activeDomain?.title ?? activeItem.label}</h3>
+          <h3>{activeRoute.label}</h3>
           <p>
             {status === "ready"
-              ? activeDomain?.summary
+              ? activeDomain?.summary ?? activeRoute.summary
               : "The context rail remains stable while service, hook, and state layers converge on a normalized UI payload."}
           </p>
         </section>
@@ -360,7 +450,8 @@ export function App() {
             ))}
           </ul>
         </section>
-      </aside>
-    </div>
+        </>
+      }
+    />
   );
 }
