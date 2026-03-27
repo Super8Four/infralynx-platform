@@ -1,5 +1,4 @@
-import { SAML } from "passport-saml/lib/node-saml/index.js";
-import type { SamlConfig } from "passport-saml/lib/passport-saml/types.js";
+import { SAML, type Profile, type SamlConfig } from "@node-saml/node-saml";
 
 import type { SamlAuthConfig } from "../../../auth-core/dist/index.js";
 
@@ -51,7 +50,7 @@ async function createSaml(config: SamlAuthConfig) {
     issuer: config.entityId,
     callbackUrl: config.acsUrl,
     entryPoint: parsed.entryPoint,
-    cert: parsed.idpCert,
+    idpCert: parsed.idpCert,
     wantAssertionsSigned: true,
     signatureAlgorithm: "sha256"
   };
@@ -84,7 +83,7 @@ export async function completeSamlAuthorization(config: SamlAuthConfig, samlResp
   const result = await saml.validatePostResponseAsync({
     SAMLResponse: samlResponse
   });
-  const profile = result.profile as Record<string, unknown> | undefined;
+  const profile = result.profile as Profile | null;
 
   if (!profile) {
     throw new Error("saml response did not include a profile");

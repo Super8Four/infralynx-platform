@@ -10,7 +10,6 @@ import { dirname } from "node:path";
 
 import RedisMock from "ioredis-mock";
 import {
-  Job as BullJob,
   Queue,
   Worker,
   type ConnectionOptions,
@@ -55,9 +54,14 @@ const EMPTY_STATE: FileBackedJobState = {
 
 const queueName = "infralynx-platform-jobs";
 const require = createRequire(import.meta.url);
-const IORedis = require("ioredis") as new (...args: any[]) => any;
-
-type RedisConnection = any;
+type RedisConnection = import("ioredis").Redis;
+type RedisConstructor = new (
+  url: string,
+  options?: {
+    readonly maxRetriesPerRequest?: null;
+  }
+) => RedisConnection;
+const IORedis = require("ioredis") as RedisConstructor;
 
 let sharedConnection: RedisConnection | null = null;
 let sharedQueue: Queue<Record<string, unknown>> | null = null;

@@ -54,6 +54,12 @@ interface MultipartUploadRequest extends IncomingMessage {
   body: Record<string, string>;
 }
 
+type UploadMiddleware = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  callback: (error?: unknown) => void
+) => void;
+
 const mediaRootDirectory = resolve(process.cwd(), "apps/api/media-data");
 const mediaObjectsDirectory = resolve(mediaRootDirectory, "objects");
 const mediaMetadataFile = resolve(mediaRootDirectory, "metadata/media.json");
@@ -68,7 +74,7 @@ const uploadMiddleware = multer({
   limits: {
     fileSize: 10 * 1024 * 1024
   }
-}).single("file");
+}).single("file") as unknown as UploadMiddleware;
 
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown) {
   response.writeHead(statusCode, {
@@ -106,7 +112,7 @@ function parseMultipartUpload(
   response: ServerResponse
 ): Promise<MultipartUploadRequest> {
   return new Promise((resolveUpload, rejectUpload) => {
-    (uploadMiddleware as any)(request, response, (error: unknown) => {
+    uploadMiddleware(request, response, (error) => {
       if (error) {
         rejectUpload(error);
         return;

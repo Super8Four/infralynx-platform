@@ -1,9 +1,23 @@
-import ldap from "ldapjs";
+import ldap, { SearchEntry } from "ldapjs";
 
 import type { LdapAuthConfig } from "../../../auth-core/dist/index.js";
 
 function createLdapUrl(config: LdapAuthConfig) {
   return `${config.ssl ? "ldaps" : "ldap"}://${config.server}:${config.port}`;
+}
+
+function mapSearchEntry(entry: SearchEntry): Record<string, unknown> {
+  const mapped: Record<string, unknown> = {};
+
+  if (entry.pojo.objectName) {
+    mapped["dn"] = entry.pojo.objectName;
+  }
+
+  for (const attribute of entry.pojo.attributes) {
+    mapped[attribute.type] = attribute.values.length <= 1 ? attribute.values[0] : attribute.values;
+  }
+
+  return mapped;
 }
 
 export async function testLdapProvider(config: LdapAuthConfig) {
@@ -71,11 +85,8 @@ export async function authenticateLdapCredentials(
 
         const entries: Record<string, unknown>[] = [];
 
-        search.on("searchEntry", (result: any) => {
-          const object = result.object ?? result.pojo?.object;
-          if (object && typeof object === "object") {
-            entries.push(object as Record<string, unknown>);
-          }
+        search.on("searchEntry", (result: SearchEntry) => {
+          entries.push(mapSearchEntry(result));
         });
         search.on("error", reject);
         search.on("end", () => resolve(entries[0]));
