@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID }
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { compareSync, hashSync } from "bcryptjs";
+import { compareSync, hashSync } from "bcrypt";
 import { SignJWT, jwtVerify } from "jose";
 
 import type { RoleDefinition } from "../../core-domain/dist/index.js";

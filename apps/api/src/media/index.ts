@@ -2,6 +2,8 @@ import { mkdirSync } from "node:fs";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, resolve } from "node:path";
 
+import multer from "multer";
+
 import {
   isLinkableObjectType,
   type ObjectAssociationReference
@@ -42,6 +44,22 @@ interface UploadMediaPayload {
   readonly associations?: readonly ObjectAssociationReference[];
 }
 
+interface MultipartUploadRequest extends IncomingMessage {
+  file?: {
+    readonly originalname: string;
+    readonly mimetype: string;
+    readonly buffer: Buffer;
+    readonly size: number;
+  };
+  body: Record<string, string>;
+}
+
+type UploadMiddleware = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  callback: (error?: unknown) => void
+) => void;
+
 const mediaRootDirectory = resolve(process.cwd(), "apps/api/media-data");
 const mediaObjectsDirectory = resolve(mediaRootDirectory, "objects");
 const mediaMetadataFile = resolve(mediaRootDirectory, "metadata/media.json");
@@ -51,6 +69,12 @@ mkdirSync(mediaObjectsDirectory, { recursive: true });
 
 const mediaRepository = createFileBackedMediaRepository(mediaMetadataFile);
 const mediaStorage = createLocalMediaStorage(mediaObjectsDirectory);
+const uploadMiddleware = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  }
+}).single("file") as unknown as UploadMiddleware;
 
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown) {
   response.writeHead(statusCode, {
@@ -80,6 +104,22 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
     });
     request.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
     request.on("error", rejectBody);
+  });
+}
+
+function parseMultipartUpload(
+  request: IncomingMessage,
+  response: ServerResponse
+): Promise<MultipartUploadRequest> {
+  return new Promise((resolveUpload, rejectUpload) => {
+    uploadMiddleware(request, response, (error) => {
+      if (error) {
+        rejectUpload(error);
+        return;
+      }
+
+      resolveUpload(request as MultipartUploadRequest);
+    });
   });
 }
 
@@ -193,18 +233,61 @@ async function handleUpload(
   }
 
   let payload: UploadMediaPayload;
+  let decodedContent: Buffer;
 
-  try {
-    payload = JSON.parse(await readRequestBody(request)) as UploadMediaPayload;
-  } catch {
-    sendJson(response, 400, {
-      error: {
-        code: "invalid_json",
-        message: "upload requests must provide valid JSON payloads"
-      }
-    });
+  if ((request.headers["content-type"] ?? "").includes("multipart/form-data")) {
+    let multipartRequest: MultipartUploadRequest;
 
-    return;
+    try {
+      multipartRequest = await parseMultipartUpload(request, response);
+    } catch (error) {
+      sendJson(response, 400, {
+        error: {
+          code: "invalid_upload",
+          message: error instanceof Error ? error.message : "multipart upload parsing failed"
+        }
+      });
+
+      return;
+    }
+
+    if (!multipartRequest.file) {
+      sendJson(response, 400, {
+        error: {
+          code: "missing_file",
+          message: "multipart uploads must include a file field"
+        }
+      });
+
+      return;
+    }
+
+    payload = {
+      filename: multipartRequest.file.originalname,
+      contentType: multipartRequest.file.mimetype,
+      contentBase64: multipartRequest.file.buffer.toString("base64"),
+      tenantId: multipartRequest.body["tenantId"] ?? "",
+      associations:
+        typeof multipartRequest.body["associations"] === "string" && multipartRequest.body["associations"].trim().length > 0
+          ? (JSON.parse(multipartRequest.body["associations"]) as readonly ObjectAssociationReference[])
+          : []
+    };
+    decodedContent = multipartRequest.file.buffer;
+  } else {
+    try {
+      payload = JSON.parse(await readRequestBody(request)) as UploadMediaPayload;
+    } catch {
+      sendJson(response, 400, {
+        error: {
+          code: "invalid_json",
+          message: "upload requests must provide valid JSON payloads"
+        }
+      });
+
+      return;
+    }
+
+    decodedContent = Buffer.from(payload.contentBase64, "base64");
   }
 
   if (!requirePermission(response, context, "media:write", payload.tenantId)) {
@@ -212,7 +295,6 @@ async function handleUpload(
   }
 
   const associations = payload.associations ?? [];
-  const decodedContent = Buffer.from(payload.contentBase64, "base64");
   const uploadValidation = validateMediaUpload({
     filename: payload.filename,
     contentType: payload.contentType,

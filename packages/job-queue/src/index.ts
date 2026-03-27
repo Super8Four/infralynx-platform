@@ -5,10 +5,23 @@ import {
   unlinkSync,
   writeFileSync
 } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname } from "node:path";
+
+import RedisMock from "ioredis-mock";
+import {
+  Queue,
+  Worker,
+  type ConnectionOptions,
+  type JobsOptions,
+  type Processor
+} from "bullmq";
 
 import {
   createJobLog,
+  defaultJobRetryPolicy,
+  markJobSucceeded,
+  registerJobFailure,
   type JobFailureTransition,
   type JobLogRecord,
   type JobRecord
@@ -29,17 +42,77 @@ export interface JobQueueStore {
   listLogs(jobId: string): readonly JobLogRecord[];
 }
 
+export interface BullMqWorkerOptions {
+  readonly concurrency?: number;
+  readonly processor: (job: JobRecord) => Promise<Record<string, unknown>>;
+}
+
 const EMPTY_STATE: FileBackedJobState = {
   jobs: [],
   logs: []
 };
 
+const queueName = "infralynx-platform-jobs";
+const require = createRequire(import.meta.url);
+type RedisConnection = import("ioredis").Redis;
+type RedisConstructor = new (
+  url: string,
+  options?: {
+    readonly maxRetriesPerRequest?: null;
+  }
+) => RedisConnection;
+const IORedis = require("ioredis") as RedisConstructor;
+
+let sharedConnection: RedisConnection | null = null;
+let sharedQueue: Queue<Record<string, unknown>> | null = null;
+
 function sleep(milliseconds: number) {
   const start = Date.now();
 
   while (Date.now() - start < milliseconds) {
-    // Intentional synchronous wait to keep lock acquisition simple in the file-backed bootstrap adapter.
+    // Intentional synchronous wait to keep file updates atomic in the metadata adapter.
   }
+}
+
+function getBullMqConnection(): RedisConnection {
+  if (sharedConnection) {
+    return sharedConnection;
+  }
+
+  const redisUrl = process.env["INFRALYNX_REDIS_URL"];
+
+  sharedConnection = redisUrl
+    ? new IORedis(redisUrl, {
+        maxRetriesPerRequest: null
+      })
+    : new RedisMock();
+
+  return sharedConnection;
+}
+
+function getQueue(): Queue<Record<string, unknown>> {
+  if (sharedQueue) {
+    return sharedQueue;
+  }
+
+  sharedQueue = new Queue(queueName, {
+    connection: getBullMqConnection() as unknown as ConnectionOptions
+  });
+
+  return sharedQueue;
+}
+
+function toBullMqJobOptions(job: JobRecord): JobsOptions {
+  return {
+    jobId: job.id,
+    attempts: defaultJobRetryPolicy.maxRetries + 1,
+    backoff: {
+      type: "exponential",
+      delay: 1_000
+    },
+    removeOnComplete: false,
+    removeOnFail: false
+  };
 }
 
 export class FileBackedJobQueueStore implements JobQueueStore {
@@ -52,13 +125,27 @@ export class FileBackedJobQueueStore implements JobQueueStore {
   }
 
   enqueue(job: JobRecord): JobRecord {
-    return this.#withLockedState((state) => ({
+    const queuedJob = this.#withLockedState((state) => ({
       nextState: {
-        jobs: [...state.jobs, job],
+        jobs: [...state.jobs.filter((entry) => entry.id !== job.id), job],
         logs: [...state.logs, createJobLog(job.id, "info", `queued ${job.type}`, job.createdAt)]
       },
       result: job
     }));
+
+    void getQueue()
+      .add(job.type, job.payload, toBullMqJobOptions(job))
+      .catch((error) => {
+        this.appendLogs([
+          createJobLog(
+            job.id,
+            "error",
+            error instanceof Error ? `queue enqueue failed: ${error.message}` : "queue enqueue failed"
+          )
+        ]);
+      });
+
+    return queuedJob;
   }
 
   leaseNextPendingJob(timestamp = new Date().toISOString()): JobRecord | null {
@@ -85,7 +172,7 @@ export class FileBackedJobQueueStore implements JobQueueStore {
           jobs: state.jobs.map((job) => (job.id === nextJob.id ? leasedJob : job)),
           logs: [
             ...state.logs,
-            createJobLog(nextJob.id, "info", `worker leased job ${nextJob.type}`, timestamp)
+            createJobLog(nextJob.id, "info", `leased ${nextJob.type}`, timestamp)
           ]
         },
         result: leasedJob
@@ -147,14 +234,13 @@ export class FileBackedJobQueueStore implements JobQueueStore {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       try {
         writeFileSync(this.#lockPath, String(process.pid), { flag: "wx" });
-
         return;
       } catch {
         sleep(25);
       }
     }
 
-    throw new Error("unable to acquire job queue state lock");
+    throw new Error("unable to acquire job queue metadata lock");
   }
 
   #releaseLock() {
@@ -188,6 +274,69 @@ export function createFileBackedJobQueueStore(stateFilePath: string) {
   return new FileBackedJobQueueStore(stateFilePath);
 }
 
+export function createBullMqJobWorker(
+  stateFilePath: string,
+  options: BullMqWorkerOptions
+) {
+  const metadataStore = createFileBackedJobQueueStore(stateFilePath);
+
+  const processor: Processor<Record<string, unknown>, Record<string, unknown>, string> = async (bullJob) => {
+    const current = metadataStore.getJob(bullJob.id ?? "") ?? {
+      id: bullJob.id ?? `job-${Date.now().toString(36)}`,
+      type: bullJob.name,
+      status: "pending" as const,
+      payload: bullJob.data,
+      result: null,
+      retryCount: Math.max(bullJob.attemptsMade - 1, 0),
+      createdBy: "system",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const running: JobRecord = {
+      ...current,
+      status: "running",
+      retryCount: bullJob.attemptsMade,
+      updatedAt: new Date().toISOString()
+    };
+
+    metadataStore.saveJob(running);
+    metadataStore.appendLogs([
+      createJobLog(running.id, "info", `worker started ${running.type}`, running.updatedAt)
+    ]);
+
+    try {
+      const result = await options.processor(running);
+      const completed = markJobSucceeded(running, result, new Date().toISOString());
+
+      metadataStore.saveJob(completed);
+      metadataStore.appendLogs([
+        createJobLog(completed.id, "info", `worker completed ${completed.type}`, completed.updatedAt)
+      ]);
+
+      return result;
+    } catch (error) {
+      const failure = registerJobFailure(
+        running,
+        error instanceof Error ? error.message : "unknown worker error",
+        defaultJobRetryPolicy,
+        new Date().toISOString()
+      );
+
+      metadataStore.saveJob(failure.job);
+      metadataStore.appendLogs([
+        ...appendFailureLogs(failure, failure.job.updatedAt)
+      ]);
+
+      throw error;
+    }
+  };
+
+  return new Worker(queueName, processor, {
+    connection: getBullMqConnection() as unknown as ConnectionOptions,
+    concurrency: options.concurrency ?? 1
+  });
+}
+
 export function resetFileBackedJobQueueStore(stateFilePath: string) {
   rmSync(stateFilePath, { force: true });
   rmSync(`${stateFilePath}.lock`, { force: true });
@@ -201,8 +350,12 @@ export function appendFailureLogs(
     createJobLog(
       transition.job.id,
       transition.willRetry ? "warn" : "error",
-      transition.willRetry ? "job failed and was returned to the queue" : "job failed permanently",
+      transition.willRetry ? "job failed and was returned to BullMQ" : "job failed permanently",
       timestamp
     )
   ];
+}
+
+export async function obliterateBullMqQueue() {
+  await getQueue().obliterate({ force: true });
 }

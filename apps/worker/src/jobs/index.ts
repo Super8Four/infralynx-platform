@@ -2,19 +2,13 @@ import { resolve } from "node:path";
 
 import { workspaceMetadata } from "../../../../packages/config/dist/index.js";
 import {
-  createJobAuditSummary,
-  createJobLog,
-  markJobSucceeded,
-  registerJobFailure,
-  type JobLogRecord
-} from "../../../../packages/job-core/dist/index.js";
-import {
-  appendFailureLogs,
-  createFileBackedJobQueueStore
+  createFileBackedJobQueueStore,
+  createBullMqJobWorker
 } from "../../../../packages/job-queue/dist/index.js";
 import {
   createFileBackedSchedulerStore,
-  createSchedulerJobLogs
+  createSchedulerJobLogs,
+  startSchedulerRuntime
 } from "../../../../packages/scheduler/dist/index.js";
 import { platformBoundaries } from "../../../../packages/domain-core/dist/index.js";
 import { jobHandlers } from "./handlers.js";
@@ -31,92 +25,12 @@ export interface WorkerCycleResult {
 const queue = createFileBackedJobQueueStore(jobsStateFilePath);
 const schedulerStore = createFileBackedSchedulerStore(schedulerStateFilePath);
 
-export function describeWorkerRuntime(): string {
-  return `${workspaceMetadata.name} worker boundary: ${platformBoundaries.worker}`;
+function delay(milliseconds: number) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
 
-export async function runWorkerCycle(): Promise<WorkerCycleResult> {
-  const leasedJob = queue.leaseNextPendingJob();
-
-  if (!leasedJob) {
-    return {
-      handled: false,
-      jobId: null,
-      status: "idle"
-    };
-  }
-
-  const handler = jobHandlers[leasedJob.type];
-  const initialLogs: JobLogRecord[] = [
-    createJobLog(leasedJob.id, "info", `worker started ${leasedJob.type}`),
-    createJobLog(leasedJob.id, "debug", createJobAuditSummary(leasedJob, "job.started"))
-  ];
-
-  queue.appendLogs(initialLogs);
-
-  if (!handler) {
-    const failure = registerJobFailure(leasedJob, `no handler registered for ${leasedJob.type}`);
-    queue.saveJob(failure.job);
-    queue.appendLogs([
-      ...appendFailureLogs(failure),
-      createJobLog(
-        failure.job.id,
-        "debug",
-        createJobAuditSummary(failure.job, "job.failed"),
-        failure.job.updatedAt
-      )
-    ]);
-
-    return {
-      handled: true,
-      jobId: failure.job.id,
-      status: failure.willRetry ? "retrying" : "failed"
-    };
-  }
-
-  try {
-    const result = await handler(leasedJob);
-    const completedJob = markJobSucceeded(leasedJob, result);
-
-    queue.saveJob(completedJob);
-    queue.appendLogs([
-      createJobLog(completedJob.id, "info", `worker completed ${completedJob.type}`, completedJob.updatedAt),
-      createJobLog(
-        completedJob.id,
-        "debug",
-        createJobAuditSummary(completedJob, "job.succeeded"),
-        completedJob.updatedAt
-      )
-    ]);
-
-    return {
-      handled: true,
-      jobId: completedJob.id,
-      status: "success"
-    };
-  } catch (error) {
-    const failure = registerJobFailure(
-      leasedJob,
-      error instanceof Error ? error.message : "unknown worker error"
-    );
-
-    queue.saveJob(failure.job);
-    queue.appendLogs([
-      ...appendFailureLogs(failure, failure.job.updatedAt),
-      createJobLog(
-        failure.job.id,
-        "debug",
-        createJobAuditSummary(failure.job, "job.failed"),
-        failure.job.updatedAt
-      )
-    ]);
-
-    return {
-      handled: true,
-      jobId: failure.job.id,
-      status: failure.willRetry ? "retrying" : "failed"
-    };
-  }
+export function describeWorkerRuntime(): string {
+  return `${workspaceMetadata.name} worker boundary: ${platformBoundaries.worker}`;
 }
 
 export function runSchedulerCycle(timestamp = new Date().toISOString()) {
@@ -125,12 +39,81 @@ export function runSchedulerCycle(timestamp = new Date().toISOString()) {
   if (dueResult.enqueuedJobs.length > 0) {
     queue.appendLogs(
       dueResult.updatedSchedules.flatMap((schedule) =>
-        createSchedulerJobLogs(schedule.id, dueResult.enqueuedJobs.filter((job) => job.payload["scheduleId"] === schedule.id), timestamp)
+        createSchedulerJobLogs(
+          schedule.id,
+          dueResult.enqueuedJobs.filter((job) => job.payload["scheduleId"] === schedule.id),
+          timestamp
+        )
       )
     );
   }
 
   return dueResult;
+}
+
+export async function runWorkerCycle(): Promise<WorkerCycleResult> {
+  const firstPendingJob = queue.listJobs("pending")[0] ?? null;
+
+  if (!firstPendingJob) {
+    return {
+      handled: false,
+      jobId: null,
+      status: "idle"
+    };
+  }
+
+  const worker = createBullMqJobWorker(jobsStateFilePath, {
+    concurrency: 1,
+    processor: async (job) => {
+      const handler = jobHandlers[job.type];
+
+      if (!handler) {
+        throw new Error(`no handler registered for ${job.type}`);
+      }
+
+      return handler(job);
+    }
+  });
+
+  try {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const current = queue.getJob(firstPendingJob.id);
+
+      if (current?.status === "success") {
+        return {
+          handled: true,
+          jobId: current.id,
+          status: "success"
+        };
+      }
+
+      if (current?.status === "failed") {
+        return {
+          handled: true,
+          jobId: current.id,
+          status: "failed"
+        };
+      }
+
+      if (current?.status === "pending" && current.retryCount > 0) {
+        return {
+          handled: true,
+          jobId: current.id,
+          status: "retrying"
+        };
+      }
+
+      await delay(250);
+    }
+
+    return {
+      handled: true,
+      jobId: firstPendingJob.id,
+      status: "idle"
+    };
+  } finally {
+    await worker.close();
+  }
 }
 
 export async function startWorkerLoop(
@@ -142,14 +125,35 @@ export async function startWorkerLoop(
     runSchedulerCycle();
     const result = await runWorkerCycle();
     console.log(`worker cycle result: ${result.status}`);
-
     return result;
   }
 
-  setInterval(() => {
-    runSchedulerCycle();
-    void runWorkerCycle();
-  }, pollIntervalMs);
+  const worker = createBullMqJobWorker(jobsStateFilePath, {
+    concurrency: Number(process.env["INFRALYNX_JOB_CONCURRENCY"] ?? "2"),
+    processor: async (job) => {
+      const handler = jobHandlers[job.type];
+
+      if (!handler) {
+        throw new Error(`no handler registered for ${job.type}`);
+      }
+
+      return handler(job);
+    }
+  });
+  const schedulerRuntime = startSchedulerRuntime(schedulerStore, queue);
+  void pollIntervalMs;
+
+  const stop = async () => {
+    schedulerRuntime.stop();
+    await worker.close();
+  };
+
+  process.once("SIGINT", () => {
+    void stop().finally(() => process.exit(0));
+  });
+  process.once("SIGTERM", () => {
+    void stop().finally(() => process.exit(0));
+  });
 
   return {
     handled: false,
