@@ -35,6 +35,7 @@ import {
   validateInterfaceVlanBinding,
   validateTopologyEdge
 } from "../../../packages/network-domain/dist/index.js";
+import { handleAuthApiRequest } from "./auth/index.js";
 import { handleExportApiRequest } from "./export/index.js";
 import { handleImportApiRequest } from "./import/index.js";
 import { handleInventoryApiRequest } from "./inventory/index.js";
@@ -1181,6 +1182,21 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
         : "all";
 
     sendJson(response, 200, createSearchResponse(requestUrl.searchParams.get("q") ?? "", domain));
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/auth")) {
+    void handleAuthApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
 
     return;
   }

@@ -243,8 +243,35 @@ button:hover,
   gap: 14px;
 }
 .entity-form__field { display: grid; gap: 8px; }
+.entity-form__field--full { grid-column: 1 / -1; }
+.entity-form__field--checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .entity-form__field span:first-child { font-size: 0.86rem; color: var(--ui-text-muted); }
 .entity-form__field small { color: #f1d89f; }
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top left, rgba(109, 166, 215, 0.12), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(215, 178, 109, 0.14), transparent 30%),
+    #0f1823;
+}
+.login-shell__panel {
+  width: min(560px, 100%);
+  padding: 28px;
+  border-radius: 28px;
+  background: rgba(23, 36, 52, 0.94);
+  border: 1px solid rgba(57, 80, 106, 0.55);
+  box-shadow: var(--ui-shadow-panel);
+  display: grid;
+  gap: 18px;
+}
 
 .detail-section,
 .related-panel { padding: 20px; display: grid; gap: 16px; }

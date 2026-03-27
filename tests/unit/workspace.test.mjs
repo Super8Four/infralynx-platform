@@ -105,6 +105,13 @@ import {
 } from "../../packages/scheduler/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
 import { createTopologyView } from "../../packages/network-domain/dist/index.js";
+import {
+  createAuthRepository,
+  issueSessionTokens,
+  normalizeProviderConfig,
+  validateProviderInput,
+  verifySessionToken
+} from "../../packages/auth-core/dist/index.js";
 
 test("workspace metadata identifies the platform runtime", () => {
   assert.equal(workspaceMetadata.name, "InfraLynx Platform");
@@ -198,6 +205,62 @@ test("auth scaffolds resolve access from assigned roles", () => {
 
   assert.equal(decision.allowed, true);
   assert.match(session.expiresAt, /2026-03-26T00:30:00.000Z/);
+});
+
+test("auth core persists providers, sessions, and encrypted config", async () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-auth-"));
+  const statePath = join(tempRoot, "auth.json");
+  const masterKeyPath = join(tempRoot, "auth-master.txt");
+
+  try {
+    const repository = createAuthRepository(statePath, masterKeyPath);
+    const provider = repository.saveProvider({
+      name: "Azure AD",
+      type: "oidc",
+      enabled: true,
+      isDefault: false,
+      config: normalizeProviderConfig("oidc", {
+        clientId: "client-1",
+        clientSecret: "secret-1",
+        issuerUrl: "https://login.microsoftonline.com/example/v2.0",
+        redirectUri: "http://localhost:4010/api/auth/oidc/callback"
+      })
+    });
+    const session = repository.createSessionRecord({
+      userId: "user-local-admin",
+      providerId: provider.id,
+      subject: "gabe@example.com",
+      tenantId: "tenant-ops",
+      roleIds: ["core-platform-admin"],
+      displayName: "Gabe Jensen"
+    });
+    const tokens = await issueSessionTokens(repository, session, masterKeyPath);
+    const accessPayload = await verifySessionToken(tokens.accessToken, masterKeyPath, "access");
+
+    assert.equal(repository.listProviders().some((entry) => entry.id === provider.id), true);
+    assert.equal(repository.getProviderConfig(provider.id).clientSecret, "secret-1");
+    assert.equal(accessPayload["sessionId"], session.id);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("auth provider validation rejects incomplete enterprise provider configs", () => {
+  const ldapErrors = validateProviderInput("ldap", {
+    server: "",
+    port: "not-a-port",
+    bindDn: "",
+    searchBase: ""
+  });
+  const samlErrors = validateProviderInput("saml", {
+    metadataUrl: "",
+    metadataXml: "",
+    entityId: "",
+    acsUrl: ""
+  });
+
+  assert.equal(ldapErrors.length > 0, true);
+  assert.equal(samlErrors.length > 0, true);
 });
 
 test("audit scaffolds create append-only summaries", () => {

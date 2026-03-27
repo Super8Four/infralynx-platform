@@ -1,4 +1,4 @@
-export type NavigationGroupId = "core" | "dcim" | "ipam" | "network" | "operations";
+export type NavigationGroupId = "core" | "dcim" | "ipam" | "network" | "operations" | "admin";
 
 export type NavigationRouteId =
   | "tenants"
@@ -11,7 +11,8 @@ export type NavigationRouteId =
   | "ip-addresses"
   | "interfaces"
   | "connections"
-  | "jobs";
+  | "jobs"
+  | "auth-providers";
 
 export interface NavigationAction {
   readonly id: string;
@@ -61,7 +62,8 @@ const navigationGroupLabels: Record<NavigationGroupId, string> = {
   dcim: "DCIM",
   ipam: "IPAM",
   network: "Network",
-  operations: "Operations"
+  operations: "Operations",
+  admin: "Admin"
 };
 
 export const navigationRoutes: readonly NavigationRoute[] = [
@@ -196,6 +198,21 @@ export const navigationRoutes: readonly NavigationRoute[] = [
     writable: false,
     actions: [],
     contextLinks: [{ id: "jobs-list", label: "Job queue", href: "#/jobs" }]
+  },
+  {
+    id: "auth-providers",
+    label: "Authentication",
+    shortLabel: "Authentication",
+    group: "admin",
+    accent: "var(--ui-accent-cool)",
+    summary: "Provider configuration, connection tests, and fallback login control.",
+    hierarchy: ["Admin", "Authentication"],
+    writable: true,
+    actions: [{ id: "auth-provider-create", label: "Add provider", href: "#/auth-providers/new" }],
+    contextLinks: [
+      { id: "auth-provider-list", label: "Provider list", href: "#/auth-providers" },
+      { id: "auth-login", label: "Login screen", href: "#/login" }
+    ]
   }
 ] as const;
 
@@ -204,7 +221,7 @@ export function getNavigationRoute(routeId: string): NavigationRoute {
 }
 
 export function getNavigationGroups(): readonly NavigationGroup[] {
-  return (["core", "dcim", "ipam", "network", "operations"] as const).map((groupId) => ({
+  return (["core", "dcim", "ipam", "network", "operations", "admin"] as const).map((groupId) => ({
     id: groupId,
     label: navigationGroupLabels[groupId],
     routes: navigationRoutes.filter((route) => route.group === groupId)

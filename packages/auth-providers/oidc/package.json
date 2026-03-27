@@ -1,0 +1,17 @@
+{
+  "name": "@infralynx/auth-provider-oidc",
+  "version": "0.2.0-alpha",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@infralynx/auth-core": "*",
+    "jose": "^6.1.0",
+    "openid-client": "^6.8.1"
+  }
+}

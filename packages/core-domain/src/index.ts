@@ -9,7 +9,9 @@ export type StatusScope =
   | "transfer"
   | "event"
   | "webhook"
-  | "schedule";
+  | "schedule"
+  | "auth-provider"
+  | "session";
 
 export type LinkableObjectType = "tenant" | "device" | "rack" | "site";
 
@@ -61,6 +63,11 @@ export const defaultTenantStatuses: readonly StatusDefinition[] = [
 export const defaultCorePermissions: readonly PermissionDefinition[] = [
   { id: "tenant:read", resource: "tenant", action: "read" },
   { id: "tenant:write", resource: "tenant", action: "write" },
+  { id: "auth:read", resource: "auth-provider", action: "read" },
+  { id: "auth:write", resource: "auth-provider", action: "write" },
+  { id: "auth:test", resource: "auth-provider", action: "execute" },
+  { id: "session:read", resource: "session", action: "read" },
+  { id: "session:write", resource: "session", action: "write" },
   { id: "tag:assign", resource: "tag", action: "assign" },
   { id: "status:read", resource: "status", action: "read" },
   { id: "audit:read", resource: "audit", action: "read" },
@@ -96,6 +103,8 @@ export const defaultCoreRoles: readonly RoleDefinition[] = [
     name: "Auditor",
     permissionIds: [
       "tenant:read",
+      "auth:read",
+      "session:read",
       "status:read",
       "audit:read",
       "media:read",

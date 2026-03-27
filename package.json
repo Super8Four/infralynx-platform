@@ -1,17 +1,18 @@
 {
   "name": "infralynx-platform",
   "private": true,
-  "version": "0.1.0-alpha",
+  "version": "0.2.0-alpha",
   "description": "InfraLynx platform monorepo foundation",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "packages/auth-providers/*"
   ],
   "scripts": {
     "build": "npm run clean && npm run build:packages && npm run build:apps",
     "build:apps": "tsc -p apps/api/tsconfig.json && tsc -p apps/worker/tsconfig.json && npm --workspace @infralynx/web run build",
-    "build:packages": "tsc -p packages/config/tsconfig.json && tsc -p packages/core-domain/tsconfig.json && tsc -p packages/auth/tsconfig.json && tsc -p packages/audit/tsconfig.json && tsc -p packages/db-abstraction/tsconfig.json && tsc -p packages/dcim-domain/tsconfig.json && tsc -p packages/domain-core/tsconfig.json && tsc -p packages/ipam-domain/tsconfig.json && tsc -p packages/shared/tsconfig.json && tsc -p packages/job-core/tsconfig.json && tsc -p packages/job-queue/tsconfig.json && tsc -p packages/scheduler/tsconfig.json && tsc -p packages/media-storage/tsconfig.json && tsc -p packages/media-core/tsconfig.json && tsc -p packages/event-core/tsconfig.json && tsc -p packages/webhooks/tsconfig.json && tsc -p packages/network-domain/tsconfig.json && tsc -p packages/data-transfer/tsconfig.json && tsc -p packages/ui/tsconfig.json",
+    "build:packages": "tsc -p packages/config/tsconfig.json && tsc -p packages/core-domain/tsconfig.json && tsc -p packages/auth-core/tsconfig.json && tsc -p packages/auth-providers/local/tsconfig.json && tsc -p packages/auth-providers/ldap/tsconfig.json && tsc -p packages/auth-providers/oidc/tsconfig.json && tsc -p packages/auth-providers/saml/tsconfig.json && tsc -p packages/auth/tsconfig.json && tsc -p packages/audit/tsconfig.json && tsc -p packages/db-abstraction/tsconfig.json && tsc -p packages/dcim-domain/tsconfig.json && tsc -p packages/domain-core/tsconfig.json && tsc -p packages/ipam-domain/tsconfig.json && tsc -p packages/shared/tsconfig.json && tsc -p packages/job-core/tsconfig.json && tsc -p packages/job-queue/tsconfig.json && tsc -p packages/scheduler/tsconfig.json && tsc -p packages/media-storage/tsconfig.json && tsc -p packages/media-core/tsconfig.json && tsc -p packages/event-core/tsconfig.json && tsc -p packages/webhooks/tsconfig.json && tsc -p packages/network-domain/tsconfig.json && tsc -p packages/data-transfer/tsconfig.json && tsc -p packages/ui/tsconfig.json",
     "clean": "node scripts/clean.mjs",
     "db:validate": "node scripts/validate-db-layout.mjs",
     "lint": "eslint . --ext .ts,.mjs --max-warnings=0",
@@ -19,7 +20,7 @@
     "test": "node --test tests/unit/**/*.test.mjs",
     "typecheck": "npm run clean && npm run build:packages && npm run typecheck:apps && npm run typecheck:packages",
     "typecheck:apps": "tsc -p apps/api/tsconfig.json --noEmit --pretty false && tsc -p apps/worker/tsconfig.json --noEmit --pretty false && npm --workspace @infralynx/web run typecheck",
-    "typecheck:packages": "tsc -p packages/config/tsconfig.json --noEmit --pretty false && tsc -p packages/core-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/auth/tsconfig.json --noEmit --pretty false && tsc -p packages/audit/tsconfig.json --noEmit --pretty false && tsc -p packages/db-abstraction/tsconfig.json --noEmit --pretty false && tsc -p packages/dcim-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/domain-core/tsconfig.json --noEmit --pretty false && tsc -p packages/ipam-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/shared/tsconfig.json --noEmit --pretty false && tsc -p packages/job-core/tsconfig.json --noEmit --pretty false && tsc -p packages/job-queue/tsconfig.json --noEmit --pretty false && tsc -p packages/scheduler/tsconfig.json --noEmit --pretty false && tsc -p packages/media-storage/tsconfig.json --noEmit --pretty false && tsc -p packages/media-core/tsconfig.json --noEmit --pretty false && tsc -p packages/event-core/tsconfig.json --noEmit --pretty false && tsc -p packages/webhooks/tsconfig.json --noEmit --pretty false && tsc -p packages/network-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/data-transfer/tsconfig.json --noEmit --pretty false && tsc -p packages/ui/tsconfig.json --noEmit --pretty false"
+    "typecheck:packages": "tsc -p packages/config/tsconfig.json --noEmit --pretty false && tsc -p packages/core-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/auth-core/tsconfig.json --noEmit --pretty false && tsc -p packages/auth-providers/local/tsconfig.json --noEmit --pretty false && tsc -p packages/auth-providers/ldap/tsconfig.json --noEmit --pretty false && tsc -p packages/auth-providers/oidc/tsconfig.json --noEmit --pretty false && tsc -p packages/auth-providers/saml/tsconfig.json --noEmit --pretty false && tsc -p packages/auth/tsconfig.json --noEmit --pretty false && tsc -p packages/audit/tsconfig.json --noEmit --pretty false && tsc -p packages/db-abstraction/tsconfig.json --noEmit --pretty false && tsc -p packages/dcim-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/domain-core/tsconfig.json --noEmit --pretty false && tsc -p packages/ipam-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/shared/tsconfig.json --noEmit --pretty false && tsc -p packages/job-core/tsconfig.json --noEmit --pretty false && tsc -p packages/job-queue/tsconfig.json --noEmit --pretty false && tsc -p packages/scheduler/tsconfig.json --noEmit --pretty false && tsc -p packages/media-storage/tsconfig.json --noEmit --pretty false && tsc -p packages/media-core/tsconfig.json --noEmit --pretty false && tsc -p packages/event-core/tsconfig.json --noEmit --pretty false && tsc -p packages/webhooks/tsconfig.json --noEmit --pretty false && tsc -p packages/network-domain/tsconfig.json --noEmit --pretty false && tsc -p packages/data-transfer/tsconfig.json --noEmit --pretty false && tsc -p packages/ui/tsconfig.json --noEmit --pretty false"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",
@@ -28,5 +29,12 @@
     "globals": "^16.0.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.30.1"
+  },
+  "dependencies": {
+    "@node-saml/node-saml": "^5.1.0",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.2",
+    "ldapts": "^8.1.7",
+    "openid-client": "^6.8.2"
   }
 }

@@ -11,7 +11,9 @@ import { Breadcrumbs } from "./components/layout/navigation/Breadcrumbs";
 import { ContextNavigation } from "./components/layout/navigation/ContextNavigation";
 import { SidebarNavigation } from "./components/layout/navigation/SidebarNavigation";
 import { AppShell } from "./layout/AppShell";
+import { AuthProvidersPage } from "./pages/admin/auth/AuthProvidersPage";
 import { fetchInventoryNavigation, type InventoryNavigationResponse } from "./services/inventory";
+import { LoginPage } from "./components/auth/LoginPage";
 import { DevicesPage } from "./pages/dcim/DevicesPage";
 import { RacksPage } from "./pages/dcim/RacksPage";
 import { SitesPage } from "./pages/dcim/SitesPage";
@@ -23,15 +25,39 @@ import { VrfsPage } from "./pages/ipam/VrfsPage";
 import { ConnectionsPage } from "./pages/network/ConnectionsPage";
 import { InterfacesPage } from "./pages/network/InterfacesPage";
 import { JobsPage } from "./pages/operations/JobsPage";
+import {
+  fetchCurrentAuthSession,
+  readLoginResultFromHash
+} from "./services/auth";
 
 interface AppRoute {
-  readonly routeId: NavigationRouteId;
+  readonly routeId: NavigationRouteId | "login";
   readonly mode: "list" | "new" | "detail" | "edit";
   readonly recordId: string | null;
+  readonly errorMessage: string | null;
 }
 
 function parseRoute(hash: string): AppRoute {
   const cleaned = hash.replace(/^#\/?/, "");
+  const loginSuccess = readLoginResultFromHash(hash);
+
+  if (loginSuccess) {
+    window.localStorage.setItem("infralynx.auth.session", JSON.stringify(loginSuccess));
+    window.location.hash = "#/auth-providers";
+    return { routeId: "login", mode: "list", recordId: null, errorMessage: null };
+  }
+
+  if (cleaned.startsWith("login")) {
+    const query = cleaned.split("?")[1] ?? "";
+    const params = new URLSearchParams(query);
+    return {
+      routeId: "login",
+      mode: "list",
+      recordId: null,
+      errorMessage: params.get("error")
+    };
+  }
+
   const segments = cleaned.length === 0 ? [] : cleaned.split("/").filter(Boolean);
   const routeId = (segments[0] ?? "devices") as NavigationRouteId;
   const validRouteIds: readonly NavigationRouteId[] = [
@@ -45,26 +71,27 @@ function parseRoute(hash: string): AppRoute {
     "ip-addresses",
     "interfaces",
     "connections",
-    "jobs"
+    "jobs",
+    "auth-providers"
   ];
 
   if (!validRouteIds.includes(routeId)) {
-    return { routeId: "devices", mode: "list", recordId: null };
+    return { routeId: "devices", mode: "list", recordId: null, errorMessage: null };
   }
 
   if (segments[1] === "new") {
-    return { routeId, mode: "new", recordId: null };
+    return { routeId, mode: "new", recordId: null, errorMessage: null };
   }
 
   if (segments[1] && segments[2] === "edit") {
-    return { routeId, mode: "edit", recordId: segments[1] };
+    return { routeId, mode: "edit", recordId: segments[1], errorMessage: null };
   }
 
   if (segments[1]) {
-    return { routeId, mode: "detail", recordId: segments[1] };
+    return { routeId, mode: "detail", recordId: segments[1], errorMessage: null };
   }
 
-  return { routeId, mode: "list", recordId: null };
+  return { routeId, mode: "list", recordId: null, errorMessage: null };
 }
 
 function getTopbarActions(route: AppRoute) {
@@ -83,6 +110,10 @@ function getTopbarActions(route: AppRoute) {
     return [{ label: "Edit", href: `#/${route.routeId}/${route.recordId}/edit` }];
   }
 
+  if (route.routeId === "auth-providers" && route.mode === "list") {
+    return [{ label: "Add Provider", href: "#/auth-providers/new" }];
+  }
+
   if (route.mode === "new" || route.mode === "edit") {
     return [{ label: "Back", href: route.recordId ? `#/${route.routeId}/${route.recordId}` : `#/${route.routeId}` }];
   }
@@ -91,6 +122,10 @@ function getTopbarActions(route: AppRoute) {
 }
 
 function renderPage(route: AppRoute) {
+  if (route.routeId === "login") {
+    return <LoginPage errorMessage={route.errorMessage} onAuthenticated={() => (window.location.hash = "#/auth-providers")} />;
+  }
+
   switch (route.routeId) {
     case "tenants":
       return <TenantsPage />;
@@ -114,6 +149,8 @@ function renderPage(route: AppRoute) {
       return <ConnectionsPage />;
     case "jobs":
       return <JobsPage />;
+    case "auth-providers":
+      return <AuthProvidersPage mode={route.mode} recordId={route.recordId} />;
   }
 }
 
@@ -134,8 +171,16 @@ export function App() {
     void fetchInventoryNavigation().then(setNavigationSummary);
   }, []);
 
-  const activeRoute = getNavigationRoute(route.routeId);
-  const breadcrumbs = getNavigationBreadcrumbs(route.routeId);
+  useEffect(() => {
+    void fetchCurrentAuthSession().catch(() => undefined);
+  }, []);
+
+  if (route.routeId === "login") {
+    return renderPage(route);
+  }
+
+  const activeRoute = getNavigationRoute(route.routeId as NavigationRouteId);
+  const breadcrumbs = getNavigationBreadcrumbs(route.routeId as NavigationRouteId);
   const groups = getNavigationGroups();
   const countsByRoute = Object.fromEntries(
     Object.values(navigationSummary?.sections ?? {})
