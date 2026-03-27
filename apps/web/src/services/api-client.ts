@@ -19,10 +19,56 @@ interface RequestJsonOptions {
   readonly signal?: AbortSignal;
 }
 
+export interface StoredAuthSession {
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly session: {
+    readonly id: string;
+    readonly userId: string;
+    readonly providerId: string;
+    readonly tenantId: string;
+    readonly roleIds: readonly string[];
+    readonly displayName: string;
+    readonly accessExpiresAt: string;
+    readonly refreshExpiresAt: string;
+  };
+}
+
+const authStorageKey = "infralynx.auth.session";
+
+export function getStoredAuthSession(): StoredAuthSession | null {
+  try {
+    const raw = window.localStorage.getItem(authStorageKey);
+
+    if (!raw) {
+      return null;
+    }
+
+    return JSON.parse(raw) as StoredAuthSession;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAuthSession(session: StoredAuthSession) {
+  window.localStorage.setItem(authStorageKey, JSON.stringify(session));
+}
+
+export function clearStoredAuthSession() {
+  window.localStorage.removeItem(authStorageKey);
+}
+
 function createDefaultHeaders(): Headers {
   const headers = new Headers();
   headers.set("Content-Type", "application/json");
-  headers.set("X-InfraLynx-Actor-Id", "ui-platform-admin");
+  const session = getStoredAuthSession();
+
+  if (session) {
+    headers.set("Authorization", `Bearer ${session.accessToken}`);
+    return headers;
+  }
+
+  headers.set("X-InfraLynx-Actor-Id", "ui-bootstrap-admin");
   headers.set("X-InfraLynx-Role-Ids", "core-platform-admin");
   headers.set("X-InfraLynx-Tenant-Id", "tenant-ops");
 
