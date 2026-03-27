@@ -1,4 +1,13 @@
-import { useState } from "react";
+import {
+  Background,
+  Controls,
+  MarkerType,
+  ReactFlow,
+  type Edge,
+  type Node,
+  type Viewport
+} from "reactflow";
+import "reactflow/dist/style.css";
 
 import {
   findConnectedEdges,
@@ -27,12 +36,61 @@ export interface TopologyGraphProps {
   readonly onResetViewport: () => void;
 }
 
-function getNodeRadius(interfaceCount: number): number {
-  return Math.min(34, 18 + interfaceCount * 1.4);
+function formatEdgeKind(kind: string) {
+  return kind.replace(/-/g, " ");
 }
 
-function formatEdgeKind(kind: string): string {
-  return kind.replace(/-/g, " ");
+function toReactFlowNodes(graph: TopologyGraphModel, selectedNodeId: string | null): Node[] {
+  return graph.nodes.map((node) => ({
+    id: node.id,
+    position: {
+      x: node.position.x,
+      y: node.position.y
+    },
+    data: {
+      label: `${node.label}\n${node.role}`
+    },
+    className: `topology-flow__node topology-flow__node--${node.tone}${node.id === selectedNodeId ? " topology-flow__node--selected" : ""}`,
+    style: {
+      width: 170,
+      borderRadius: 18,
+      border: "1px solid rgba(230, 225, 217, 0.16)",
+      padding: 0,
+      background: "linear-gradient(180deg, rgba(58, 74, 95, 0.96), rgba(30, 42, 56, 0.96))",
+      color: "#ffffff",
+      boxShadow: node.id === selectedNodeId ? "0 0 0 1px rgba(230,225,217,0.55)" : "0 20px 40px rgba(0, 0, 0, 0.28)",
+      whiteSpace: "pre-line",
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }));
+}
+
+function toReactFlowEdges(graph: TopologyGraphModel, selectedNodeId: string | null): Edge[] {
+  return graph.edges.map((edge) => {
+    const selected = edge.fromNodeId === selectedNodeId || edge.toNodeId === selectedNodeId;
+
+    return {
+      id: edge.id,
+      source: edge.fromNodeId,
+      target: edge.toNodeId,
+      label: edge.label,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: selected ? "#E6E1D9" : "#7F90A3"
+      },
+      animated: edge.kind === "vlan-propagation",
+      className: selected ? "topology-flow__edge topology-flow__edge--selected" : "topology-flow__edge",
+      style: {
+        stroke: selected ? "#E6E1D9" : "#7F90A3",
+        strokeWidth: selected ? 2.4 : 1.6
+      },
+      labelStyle: {
+        fill: "#C7CED6",
+        fontSize: 11
+      }
+    };
+  });
 }
 
 export function TopologyGraph({
@@ -51,12 +109,11 @@ export function TopologyGraph({
 }: TopologyGraphProps) {
   const selectedNode = findTopologyNode(graph, selectedNodeId);
   const connectedEdges = findConnectedEdges(graph, selectedNodeId);
-  const [dragOrigin, setDragOrigin] = useState<{
-    pointerX: number;
-    pointerY: number;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
+  const flowViewport: Viewport = {
+    x: viewport.offsetX,
+    y: viewport.offsetY,
+    zoom: viewport.scale
+  };
 
   return (
     <section className="topology-stage" aria-label="Topology graph">
@@ -148,88 +205,31 @@ export function TopologyGraph({
           </div>
         </div>
 
-        <div
-          className="topology-stage__viewport"
-          onPointerDown={(event) =>
-            setDragOrigin({
-              pointerX: event.clientX,
-              pointerY: event.clientY,
-              offsetX: viewport.offsetX,
-              offsetY: viewport.offsetY
-            })
-          }
-          onPointerMove={(event) => {
-            if (!dragOrigin) {
-              return;
+        <div className="topology-stage__viewport topology-flow">
+          <ReactFlow
+            key={`${viewport.scale}:${viewport.offsetX}:${viewport.offsetY}:${graph.nodes.length}:${graph.edges.length}`}
+            nodes={toReactFlowNodes(graph, selectedNodeId)}
+            edges={toReactFlowEdges(graph, selectedNodeId)}
+            fitView={false}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={true}
+            zoomOnDoubleClick={false}
+            minZoom={0.5}
+            maxZoom={1.9}
+            defaultViewport={flowViewport}
+            onNodeClick={(_, node) => onSelectNode(node.id)}
+            onMoveEnd={(_, nextViewport) =>
+              onViewportChange({
+                offsetX: nextViewport.x,
+                offsetY: nextViewport.y,
+                scale: nextViewport.zoom
+              })
             }
-
-            onViewportChange({
-              ...viewport,
-              offsetX: dragOrigin.offsetX + event.clientX - dragOrigin.pointerX,
-              offsetY: dragOrigin.offsetY + event.clientY - dragOrigin.pointerY
-            });
-          }}
-          onPointerUp={() => setDragOrigin(null)}
-          onPointerLeave={() => setDragOrigin(null)}
-        >
-          <svg className="topology-stage__canvas" viewBox="0 0 1200 720" role="img" aria-label="Network topology graph">
-            <g transform={`translate(${viewport.offsetX} ${viewport.offsetY}) scale(${viewport.scale})`}>
-              {graph.edges.map((edge) => {
-                const fromNode = graph.nodes.find((node) => node.id === edge.fromNodeId);
-                const toNode = graph.nodes.find((node) => node.id === edge.toNodeId);
-
-                if (!fromNode || !toNode) {
-                  return null;
-                }
-
-                const edgeSelected = edge.fromNodeId === selectedNodeId || edge.toNodeId === selectedNodeId;
-
-                return (
-                  <g key={edge.id}>
-                    <line
-                      className={edgeSelected ? "topology-stage__edge topology-stage__edge--selected" : "topology-stage__edge"}
-                      x1={fromNode.position.x}
-                      y1={fromNode.position.y}
-                      x2={toNode.position.x}
-                      y2={toNode.position.y}
-                    />
-                    <text
-                      className="topology-stage__edge-label"
-                      x={(fromNode.position.x + toNode.position.x) / 2}
-                      y={(fromNode.position.y + toNode.position.y) / 2 - 8}
-                      textAnchor="middle"
-                    >
-                      {edge.label}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {graph.nodes.map((node) => {
-                const selected = node.id === selectedNodeId;
-
-                return (
-                  <g
-                    key={node.id}
-                    className="topology-stage__node-group"
-                    transform={`translate(${node.position.x} ${node.position.y})`}
-                    onClick={() => onSelectNode(node.id)}
-                  >
-                    <circle
-                      className={`topology-stage__node topology-stage__node--${node.tone}${selected ? " topology-stage__node--selected" : ""}`}
-                      r={getNodeRadius(node.interfaceCount)}
-                    />
-                    <text className="topology-stage__node-title" textAnchor="middle" y={4}>
-                      {node.label}
-                    </text>
-                    <text className="topology-stage__node-meta" textAnchor="middle" y={getNodeRadius(node.interfaceCount) + 18}>
-                      {node.role}
-                    </text>
-                  </g>
-                );
-              })}
-            </g>
-          </svg>
+          >
+            <Background color="#324252" gap={24} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
         </div>
       </div>
 

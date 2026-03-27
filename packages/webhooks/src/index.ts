@@ -2,6 +2,8 @@ import { createHmac, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+import axios from "axios";
+
 import { resolveAccessDecision, type AccessDecision, type AuthIdentity } from "../../auth/dist/index.js";
 import { defaultCoreRoles, type RoleDefinition } from "../../core-domain/dist/index.js";
 import {
@@ -181,18 +183,17 @@ export async function deliverWebhook(input: {
   const signature = signWebhookPayload(input.webhook.secret, body);
   const attemptedAt = new Date().toISOString();
 
-  const response = await fetch(input.webhook.endpointUrl, {
-    method: "POST",
+  const response = await axios.post(input.webhook.endpointUrl, body, {
     headers: {
       "Content-Type": "application/json",
       "X-InfraLynx-Event-Id": input.event.id,
       "X-InfraLynx-Event-Type": input.event.type,
       "X-InfraLynx-Signature-Sha256": signature
     },
-    body
+    validateStatus: () => true
   });
 
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new Error(`webhook delivery failed with status ${response.status}`);
   }
 

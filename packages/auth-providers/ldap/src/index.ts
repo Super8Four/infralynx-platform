@@ -1,4 +1,4 @@
-import { Client } from "ldapts";
+import ldap from "ldapjs";
 
 import type { LdapAuthConfig } from "../../../auth-core/dist/index.js";
 
@@ -7,20 +7,31 @@ function createLdapUrl(config: LdapAuthConfig) {
 }
 
 export async function testLdapProvider(config: LdapAuthConfig) {
-  const client = new Client({
+  const client = ldap.createClient({
     url: createLdapUrl(config),
     connectTimeout: 5000,
     timeout: 5000
   });
 
   try {
-    await client.bind(config.bindDn, config.bindPassword);
+    await new Promise<void>((resolve, reject) => {
+      client.bind(config.bindDn, config.bindPassword, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
     return {
       valid: true,
       reason: "ldap bind succeeded"
     };
   } finally {
-    await client.unbind().catch(() => undefined);
+    await new Promise<void>((resolve) => {
+      client.unbind(() => resolve());
+    });
   }
 }
 
@@ -29,27 +40,62 @@ export async function authenticateLdapCredentials(
   username: string,
   password: string
 ) {
-  const client = new Client({
+  const client = ldap.createClient({
     url: createLdapUrl(config),
     connectTimeout: 5000,
     timeout: 5000
   });
 
   try {
-    await client.bind(config.bindDn, config.bindPassword);
-    const filter = `(|(sAMAccountName=${username})(userPrincipalName=${username})(mail=${username}))`;
-    const search = await client.search(config.searchBase, {
-      scope: "sub",
-      filter,
-      attributes: ["dn", "mail", "displayName", "cn", "userPrincipalName", "sAMAccountName"]
+    await new Promise<void>((resolve, reject) => {
+      client.bind(config.bindDn, config.bindPassword, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
     });
-    const entry = search.searchEntries[0] as Record<string, unknown> | undefined;
+    const filter = `(|(sAMAccountName=${username})(userPrincipalName=${username})(mail=${username}))`;
+    const entry = await new Promise<Record<string, unknown> | undefined>((resolve, reject) => {
+      client.search(config.searchBase, {
+        scope: "sub",
+        filter,
+        attributes: ["dn", "mail", "displayName", "cn", "userPrincipalName", "sAMAccountName"]
+      }, (error, search) => {
+        if (error || !search) {
+          reject(error ?? new Error("ldap search did not return a result stream"));
+          return;
+        }
+
+        const entries: Record<string, unknown>[] = [];
+
+        search.on("searchEntry", (result: any) => {
+          const object = result.object ?? result.pojo?.object;
+          if (object && typeof object === "object") {
+            entries.push(object as Record<string, unknown>);
+          }
+        });
+        search.on("error", reject);
+        search.on("end", () => resolve(entries[0]));
+      });
+    });
 
     if (!entry || typeof entry["dn"] !== "string") {
       throw new Error("ldap user could not be found");
     }
 
-    await client.bind(entry["dn"], password);
+    await new Promise<void>((resolve, reject) => {
+      client.bind(String(entry["dn"]), password, (error: Error | null) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
 
     return {
       externalId: entry["dn"],
@@ -69,6 +115,8 @@ export async function authenticateLdapCredentials(
             : username
     };
   } finally {
-    await client.unbind().catch(() => undefined);
+    await new Promise<void>((resolve) => {
+      client.unbind(() => resolve());
+    });
   }
 }

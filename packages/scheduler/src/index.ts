@@ -7,6 +7,8 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
+import cron from "node-cron";
+
 import { createJobLog, createJobRecord, type JobLogRecord, type JobRecord } from "../../job-core/dist/index.js";
 import type { JobQueueStore } from "../../job-queue/dist/index.js";
 
@@ -72,6 +74,10 @@ export interface SchedulerStore {
   listSchedules(): readonly ScheduleRecord[];
   listLogs(scheduleId?: string): readonly ScheduleLogRecord[];
   runDueSchedules(queue: JobQueueStore, timestamp?: string): ScheduleDueResult;
+}
+
+export interface SchedulerRuntime {
+  stop(): void;
 }
 
 const EMPTY_STATE: ScheduleState = {
@@ -200,7 +206,17 @@ function parseCronField(field: string, min: number, max: number): ParsedCronFiel
 }
 
 export function validateCronExpression(expression: string): CronValidationResult {
-  const segments = expression.trim().split(/\s+/);
+  const trimmedExpression = expression.trim();
+
+  if (!cron.validate(trimmedExpression)) {
+    return {
+      valid: false,
+      reason: "cron expression contains unsupported values or ranges",
+      parsed: null
+    };
+  }
+
+  const segments = trimmedExpression.split(/\s+/);
 
   if (segments.length !== 5) {
     return {
@@ -588,4 +604,51 @@ export function createSchedulerJobLogs(
   return enqueuedJobs.map((job) =>
     createJobLog(job.id, "info", `scheduler triggered ${job.type} from ${scheduleId}`, timestamp)
   );
+}
+
+export function startSchedulerRuntime(
+  store: SchedulerStore,
+  queue: JobQueueStore
+): SchedulerRuntime {
+  const tasks = store
+    .listSchedules()
+    .filter((schedule) => schedule.enabled)
+    .map((schedule) =>
+      cron.schedule(
+        schedule.cronExpression,
+        () => {
+          const timestamp = new Date().toISOString();
+          const job = queue.enqueue(
+            createJobRecord({
+              type: schedule.jobType,
+              payload: {
+                ...schedule.payload,
+                scheduleId: schedule.id,
+                scheduledFor: timestamp
+              },
+              createdBy: `scheduler:${schedule.id}`,
+              createdAt: timestamp
+            })
+          );
+
+          store.updateSchedule(schedule.id, {
+            lastRun: timestamp,
+            nextRun: calculateNextRun(schedule.cronExpression, timestamp, schedule.timezone)
+          });
+          queue.appendLogs(createSchedulerJobLogs(schedule.id, [job], timestamp));
+        },
+        {
+          timezone: schedule.timezone
+        }
+      )
+    );
+
+  return {
+    stop() {
+      for (const task of tasks) {
+        task.stop();
+        task.destroy();
+      }
+    }
+  };
 }

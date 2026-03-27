@@ -1,4 +1,5 @@
-import { SAML, ValidateInResponseTo, type SamlConfig } from "@node-saml/node-saml";
+import { SAML } from "passport-saml/lib/node-saml/index.js";
+import type { SamlConfig } from "passport-saml/lib/passport-saml/types.js";
 
 import type { SamlAuthConfig } from "../../../auth-core/dist/index.js";
 
@@ -50,11 +51,9 @@ async function createSaml(config: SamlAuthConfig) {
     issuer: config.entityId,
     callbackUrl: config.acsUrl,
     entryPoint: parsed.entryPoint,
-    idpCert: parsed.idpCert,
+    cert: parsed.idpCert,
     wantAssertionsSigned: true,
-    wantAuthnResponseSigned: true,
-    signatureAlgorithm: "sha256",
-    validateInResponseTo: ValidateInResponseTo.ifPresent
+    signatureAlgorithm: "sha256"
   };
 
   return {
