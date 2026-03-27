@@ -35,3 +35,4 @@ temp/
 .cache/
 *.tsbuildinfo
 apps/api/media-data/
+runtime-data/

@@ -12,6 +12,8 @@
     "@infralynx/auth": "*",
     "@infralynx/config": "*",
     "@infralynx/core-domain": "*",
+    "@infralynx/job-core": "*",
+    "@infralynx/job-queue": "*",
     "@infralynx/domain-core": "*",
     "@infralynx/media-core": "*",
     "@infralynx/media-storage": "*",
