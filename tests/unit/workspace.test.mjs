@@ -37,7 +37,6 @@ import {
   getNavigationBreadcrumbs,
   getNavigationGroups,
   getNavigationRoute,
-  mapDataDomainToRouteId,
   createInitialExpandedIpamTree,
   createIpamTreeModel,
   createDefaultTopologyFilter,
@@ -362,19 +361,19 @@ test("dcim scaffolds validate rack occupancy and cable endpoints", () => {
 test("ui scaffolds expose navigation and workspace panels", () => {
   assert.equal(shellNavigation.length >= 7, true);
   assert.equal(workspacePanels.some((panel) => panel.id === "dcim"), true);
-  assert.equal(shellNavigation[0]?.label, "Overview");
+  assert.equal(shellNavigation[0]?.label, "Tenants");
 });
 
 test("navigation scaffolds keep hierarchy and domain mapping explicit", () => {
   const groups = getNavigationGroups();
-  const networking = getNavigationRoute("networking");
-  const breadcrumbs = getNavigationBreadcrumbs("ipam");
+  const devices = getNavigationRoute("devices");
+  const breadcrumbs = getNavigationBreadcrumbs("prefixes");
 
-  assert.equal(groups.some((group) => group.id === "domains"), true);
-  assert.equal(networking.dataDomainId, "operations");
-  assert.equal(breadcrumbs[0]?.label, "Domains");
-  assert.equal(breadcrumbs[1]?.label, "IPAM");
-  assert.equal(mapDataDomainToRouteId("operations"), "networking");
+  assert.equal(groups.some((group) => group.id === "dcim"), true);
+  assert.equal(devices.group, "dcim");
+  assert.equal(devices.writable, true);
+  assert.equal(breadcrumbs[0]?.label, "IPAM");
+  assert.equal(breadcrumbs[1]?.label, "Prefixes");
 });
 
 test("rack system scaffolds create deterministic device slots", () => {
