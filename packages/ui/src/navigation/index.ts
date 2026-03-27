@@ -1,13 +1,17 @@
-export type NavigationGroupId = "platform" | "domains" | "services";
+export type NavigationGroupId = "core" | "dcim" | "ipam" | "network" | "operations";
 
 export type NavigationRouteId =
-  | "overview"
-  | "core"
-  | "ipam"
-  | "dcim"
-  | "networking"
-  | "virtualization"
-  | "automation";
+  | "tenants"
+  | "users"
+  | "sites"
+  | "racks"
+  | "devices"
+  | "vrfs"
+  | "prefixes"
+  | "ip-addresses"
+  | "interfaces"
+  | "connections"
+  | "jobs";
 
 export interface NavigationAction {
   readonly id: string;
@@ -25,12 +29,11 @@ export interface NavigationRoute {
   readonly id: NavigationRouteId;
   readonly label: string;
   readonly shortLabel: string;
-  readonly domainLabel: string;
   readonly group: NavigationGroupId;
   readonly accent: string;
   readonly summary: string;
   readonly hierarchy: readonly string[];
-  readonly dataDomainId: string | null;
+  readonly writable: boolean;
   readonly actions: readonly NavigationAction[];
   readonly contextLinks: readonly NavigationContextLink[];
 }
@@ -49,166 +52,159 @@ export interface NavigationBreadcrumb {
 export interface NavigationItem {
   readonly id: string;
   readonly label: string;
-  readonly domain: string;
+  readonly group: string;
   readonly accent: string;
 }
 
 const navigationGroupLabels: Record<NavigationGroupId, string> = {
-  platform: "Platform",
-  domains: "Domains",
-  services: "Services"
+  core: "Core",
+  dcim: "DCIM",
+  ipam: "IPAM",
+  network: "Network",
+  operations: "Operations"
 };
 
 export const navigationRoutes: readonly NavigationRoute[] = [
   {
-    id: "overview",
-    label: "Overview",
-    shortLabel: "Overview",
-    domainLabel: "Program",
-    group: "platform",
-    accent: "var(--ui-accent)",
-    summary: "Program-wide snapshot spanning control plane, data models, and visual surfaces.",
-    hierarchy: ["Workspace", "Overview"],
-    dataDomainId: "overview",
-    actions: [
-      { id: "overview-search", label: "Search", href: "#section-search" },
-      { id: "overview-brief", label: "Domain brief", href: "#section-brief" }
-    ],
-    contextLinks: [
-      { id: "overview-summary", label: "Program summary", href: "#section-brief" },
-      { id: "overview-surface", label: "Workspace surface", href: "#section-workspace" }
-    ]
-  },
-  {
-    id: "core",
-    label: "Core Platform",
-    shortLabel: "Core",
-    domainLabel: "Core",
-    group: "domains",
+    id: "tenants",
+    label: "Tenants",
+    shortLabel: "Tenants",
+    group: "core",
     accent: "var(--ui-accent-cool)",
-    summary: "Authentication, RBAC, tenancy, status, and audit contracts that frame every domain.",
-    hierarchy: ["Domains", "Core Platform"],
-    dataDomainId: "core",
-    actions: [
-      { id: "core-summary", label: "Control plane", href: "#section-brief" },
-      { id: "core-notes", label: "Policies", href: "#section-context" }
-    ],
-    contextLinks: [
-      { id: "core-brief", label: "Core summary", href: "#section-brief" },
-      { id: "core-notes", label: "Policy notes", href: "#section-context" }
-    ]
+    summary: "Tenant boundaries and ownership context.",
+    hierarchy: ["Core", "Tenants"],
+    writable: false,
+    actions: [],
+    contextLinks: [{ id: "core-tenants", label: "Tenant directory", href: "#/tenants" }]
   },
   {
-    id: "ipam",
-    label: "IPAM",
-    shortLabel: "IPAM",
-    domainLabel: "IPAM",
-    group: "domains",
-    accent: "var(--ui-accent)",
-    summary: "VRFs, prefixes, VLANs, utilization, and allocation hierarchy views.",
-    hierarchy: ["Domains", "IPAM"],
-    dataDomainId: "ipam",
-    actions: [
-      { id: "ipam-search", label: "Search", href: "#section-search" },
-      { id: "ipam-tree", label: "Hierarchy", href: "#section-workspace" },
-      { id: "ipam-context", label: "Utilization", href: "#section-context" }
-    ],
-    contextLinks: [
-      { id: "ipam-brief", label: "Hierarchy summary", href: "#section-brief" },
-      { id: "ipam-tree-link", label: "Prefix tree", href: "#section-workspace" },
-      { id: "ipam-guidance", label: "Validation notes", href: "#section-context" }
-    ]
-  },
-  {
-    id: "dcim",
-    label: "DCIM",
-    shortLabel: "DCIM",
-    domainLabel: "DCIM",
-    group: "domains",
-    accent: "var(--ui-accent-signal)",
-    summary: "Physical inventory, rack elevation, port inspection, and cable awareness.",
-    hierarchy: ["Domains", "DCIM"],
-    dataDomainId: "dcim",
-    actions: [
-      { id: "dcim-search", label: "Search", href: "#section-search" },
-      { id: "dcim-rack", label: "Rack view", href: "#section-workspace" },
-      { id: "dcim-context", label: "Selections", href: "#section-context" }
-    ],
-    contextLinks: [
-      { id: "dcim-brief", label: "Physical summary", href: "#section-brief" },
-      { id: "dcim-rack-link", label: "Elevation", href: "#section-workspace" },
-      { id: "dcim-detail", label: "Selected device", href: "#section-context" }
-    ]
-  },
-  {
-    id: "networking",
-    label: "Networking",
-    shortLabel: "Network",
-    domainLabel: "Networking",
-    group: "domains",
+    id: "users",
+    label: "Users",
+    shortLabel: "Users",
+    group: "core",
     accent: "var(--ui-accent-cool)",
-    summary: "Topology graph, cross-domain wiring, and path-oriented operational visibility.",
-    hierarchy: ["Domains", "Networking"],
-    dataDomainId: "operations",
-    actions: [
-      { id: "network-search", label: "Search", href: "#section-search" },
-      { id: "network-graph", label: "Topology", href: "#section-workspace" },
-      { id: "network-context", label: "Selection", href: "#section-context" }
-    ],
-    contextLinks: [
-      { id: "network-brief", label: "Graph summary", href: "#section-brief" },
-      { id: "network-graph-link", label: "Graph view", href: "#section-workspace" },
-      { id: "network-detail", label: "Node detail", href: "#section-context" }
-    ]
+    summary: "Current platform identities and assigned roles.",
+    hierarchy: ["Core", "Users"],
+    writable: false,
+    actions: [],
+    contextLinks: [{ id: "core-users", label: "User directory", href: "#/users" }]
   },
   {
-    id: "virtualization",
-    label: "Virtualization",
-    shortLabel: "Virtual",
-    domainLabel: "Virtualization",
-    group: "domains",
+    id: "sites",
+    label: "Sites",
+    shortLabel: "Sites",
+    group: "dcim",
     accent: "var(--ui-accent-signal)",
-    summary: "Planned cluster, hypervisor, and VM workflows in a reserved navigation slot.",
-    hierarchy: ["Domains", "Virtualization"],
-    dataDomainId: null,
-    actions: [
-      { id: "virtual-plan", label: "Roadmap", href: "#section-brief" },
-      { id: "virtual-surface", label: "Reserved space", href: "#section-workspace" }
-    ],
-    contextLinks: [
-      { id: "virtual-summary", label: "Planned scope", href: "#section-brief" },
-      { id: "virtual-context", label: "Future context", href: "#section-context" }
-    ]
+    summary: "Physical sites and top-level location boundaries.",
+    hierarchy: ["DCIM", "Sites"],
+    writable: true,
+    actions: [{ id: "site-create", label: "Create site", href: "#/sites/new" }],
+    contextLinks: [{ id: "site-list", label: "Site list", href: "#/sites" }]
   },
   {
-    id: "automation",
-    label: "Automation",
-    shortLabel: "Automation",
-    domainLabel: "Automation",
-    group: "services",
+    id: "racks",
+    label: "Racks",
+    shortLabel: "Racks",
+    group: "dcim",
+    accent: "var(--ui-accent-signal)",
+    summary: "Rack inventory with capacity and placement context.",
+    hierarchy: ["DCIM", "Racks"],
+    writable: true,
+    actions: [{ id: "rack-create", label: "Create rack", href: "#/racks/new" }],
+    contextLinks: [{ id: "rack-list", label: "Rack list", href: "#/racks" }]
+  },
+  {
+    id: "devices",
+    label: "Devices",
+    shortLabel: "Devices",
+    group: "dcim",
+    accent: "var(--ui-accent-signal)",
+    summary: "Device inventory with interface and cable relationships.",
+    hierarchy: ["DCIM", "Devices"],
+    writable: true,
+    actions: [{ id: "device-create", label: "Create device", href: "#/devices/new" }],
+    contextLinks: [{ id: "device-list", label: "Device list", href: "#/devices" }]
+  },
+  {
+    id: "vrfs",
+    label: "VRFs",
+    shortLabel: "VRFs",
+    group: "ipam",
     accent: "var(--ui-accent)",
-    summary: "Future jobs, imports, exports, and webhook-driven orchestration.",
-    hierarchy: ["Services", "Automation"],
-    dataDomainId: "automation",
-    actions: [
-      { id: "automation-search", label: "Search", href: "#section-search" },
-      { id: "automation-brief", label: "Planned workflows", href: "#section-brief" }
-    ],
-    contextLinks: [
-      { id: "automation-summary", label: "Workflow scope", href: "#section-brief" },
-      { id: "automation-context", label: "Implementation notes", href: "#section-context" }
-    ]
+    summary: "Routing scopes used by prefixes and IP allocations.",
+    hierarchy: ["IPAM", "VRFs"],
+    writable: false,
+    actions: [],
+    contextLinks: [{ id: "vrf-list", label: "VRF list", href: "#/vrfs" }]
+  },
+  {
+    id: "prefixes",
+    label: "Prefixes",
+    shortLabel: "Prefixes",
+    group: "ipam",
+    accent: "var(--ui-accent)",
+    summary: "Hierarchical prefix inventory with utilization context.",
+    hierarchy: ["IPAM", "Prefixes"],
+    writable: true,
+    actions: [{ id: "prefix-create", label: "Create prefix", href: "#/prefixes/new" }],
+    contextLinks: [{ id: "prefix-list", label: "Prefix list", href: "#/prefixes" }]
+  },
+  {
+    id: "ip-addresses",
+    label: "IP Addresses",
+    shortLabel: "IP Addresses",
+    group: "ipam",
+    accent: "var(--ui-accent)",
+    summary: "Address allocations bound to prefixes and interfaces.",
+    hierarchy: ["IPAM", "IP Addresses"],
+    writable: true,
+    actions: [{ id: "ip-create", label: "Create IP address", href: "#/ip-addresses/new" }],
+    contextLinks: [{ id: "ip-list", label: "Address list", href: "#/ip-addresses" }]
+  },
+  {
+    id: "interfaces",
+    label: "Interfaces",
+    shortLabel: "Interfaces",
+    group: "network",
+    accent: "var(--ui-accent-cool)",
+    summary: "Read-only interface view for cross-domain relationships.",
+    hierarchy: ["Network", "Interfaces"],
+    writable: false,
+    actions: [],
+    contextLinks: [{ id: "interface-list", label: "Interface list", href: "#/interfaces" }]
+  },
+  {
+    id: "connections",
+    label: "Connections",
+    shortLabel: "Connections",
+    group: "network",
+    accent: "var(--ui-accent-cool)",
+    summary: "Physical and logical connection records.",
+    hierarchy: ["Network", "Connections"],
+    writable: false,
+    actions: [],
+    contextLinks: [{ id: "connection-list", label: "Connection list", href: "#/connections" }]
+  },
+  {
+    id: "jobs",
+    label: "Jobs",
+    shortLabel: "Jobs",
+    group: "operations",
+    accent: "var(--ui-accent-signal)",
+    summary: "Background job lifecycle, results, and logs.",
+    hierarchy: ["Operations", "Jobs"],
+    writable: false,
+    actions: [],
+    contextLinks: [{ id: "jobs-list", label: "Job queue", href: "#/jobs" }]
   }
 ] as const;
 
 export function getNavigationRoute(routeId: string): NavigationRoute {
-  const match = navigationRoutes.find((route) => route.id === routeId);
-
-  return match ?? navigationRoutes[0];
+  return navigationRoutes.find((route) => route.id === routeId) ?? navigationRoutes[0];
 }
 
 export function getNavigationGroups(): readonly NavigationGroup[] {
-  return (["platform", "domains", "services"] as const).map((groupId) => ({
+  return (["core", "dcim", "ipam", "network", "operations"] as const).map((groupId) => ({
     id: groupId,
     label: navigationGroupLabels[groupId],
     routes: navigationRoutes.filter((route) => route.group === groupId)
@@ -217,38 +213,20 @@ export function getNavigationGroups(): readonly NavigationGroup[] {
 
 export function getNavigationBreadcrumbs(routeId: string): readonly NavigationBreadcrumb[] {
   const route = getNavigationRoute(routeId);
-
-  return route.hierarchy.map((label, index) => ({
-    id: `${route.id}-${index}`,
-    label
-  }));
+  return route.hierarchy.map((label, index) => ({ id: `${route.id}-${index}`, label }));
 }
 
-export function mapDataDomainToRouteId(domainId: string): NavigationRouteId {
-  if (domainId === "operations") {
-    return "networking";
-  }
-
-  if (domainId === "automation") {
-    return "automation";
-  }
-
-  if (domainId === "core" || domainId === "ipam" || domainId === "dcim") {
-    return domainId;
-  }
-
-  return "overview";
+export function isWritableNavigationRoute(routeId: string): boolean {
+  return getNavigationRoute(routeId).writable;
 }
 
 export const shellNavigation: readonly NavigationItem[] = navigationRoutes.map((route) => ({
   id: route.id,
   label: route.label,
-  domain: route.domainLabel.toLowerCase(),
+  group: route.group,
   accent: route.accent
 }));
 
 export function getNavigationItem(sectionId: string): NavigationItem {
-  const match = shellNavigation.find((item) => item.id === sectionId);
-
-  return match ?? shellNavigation[0];
+  return shellNavigation.find((item) => item.id === sectionId) ?? shellNavigation[0];
 }

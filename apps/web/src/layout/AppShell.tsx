@@ -17,8 +17,8 @@ export function AppShell({ brand, sidebar, topbar, content, context }: AppShellP
       </aside>
 
       <main className="shell__workspace">
-        {topbar}
-        {content}
+        <section className="shell__topbar">{topbar}</section>
+        <section className="shell__content">{content}</section>
       </main>
 
       <aside className="shell__context">{context}</aside>
