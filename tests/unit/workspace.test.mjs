@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 
 import { workspaceMetadata } from "../../packages/config/dist/index.js";
 import {
+  createSearchQuery,
   createRoleIndex,
   createTenantDirectory,
   defaultCoreRoles,
-  defaultTenantStatuses
+  defaultTenantStatuses,
+  groupSearchResults,
+  searchRecords
 } from "../../packages/core-domain/dist/index.js";
 import { createSession, resolveAccessDecision } from "../../packages/auth/dist/index.js";
 import { createAuditRecord, summarizeAuditRecord } from "../../packages/audit/dist/index.js";
@@ -80,6 +83,53 @@ test("core domain scaffolds expose tenant, status, and role indexes", () => {
   assert.equal(defaultTenantStatuses.length, 3);
   assert.equal(tenants.get("tenant-1")?.name, "Operations");
   assert.equal(roles.get("core-platform-admin")?.slug, "platform-admin");
+});
+
+test("core search scaffolds rank, filter, and group results deterministically", () => {
+  const records = [
+    {
+      id: "tenant-ops",
+      domain: "core",
+      kind: "tenant",
+      title: "Operations",
+      summary: "Operations tenant boundary",
+      location: "Core / Tenants / operations",
+      keywords: ["operations", "tenant"],
+      tags: ["core"],
+      status: "active"
+    },
+    {
+      id: "prefix-prod",
+      domain: "ipam",
+      kind: "prefix",
+      title: "10.40.16.0/24",
+      summary: "Production application prefix",
+      location: "IPAM / Prefixes / 10.40.16.0/24",
+      keywords: ["production", "prefix", "apps"],
+      tags: ["ipam"],
+      status: "active"
+    },
+    {
+      id: "device-leaf-sw1",
+      domain: "dcim",
+      kind: "device",
+      title: "leaf-sw1",
+      summary: "Top-of-rack switch in Dallas",
+      location: "DCIM / Devices / leaf-sw1",
+      keywords: ["leaf", "switch", "dallas"],
+      tags: ["dcim"],
+      status: "active"
+    }
+  ];
+  const allMatches = searchRecords(records, createSearchQuery("operations"));
+  const ipamMatches = searchRecords(records, createSearchQuery("production", "ipam"));
+  const grouped = groupSearchResults(searchRecords(records, createSearchQuery("10.40")));
+
+  assert.equal(allMatches[0]?.record.id, "tenant-ops");
+  assert.equal(ipamMatches.length, 1);
+  assert.equal(ipamMatches[0]?.record.domain, "ipam");
+  assert.equal(grouped[0]?.domain, "ipam");
+  assert.equal(grouped[0]?.results[0]?.record.id, "prefix-prod");
 });
 
 test("auth scaffolds resolve access from assigned roles", () => {

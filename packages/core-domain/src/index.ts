@@ -75,3 +75,5 @@ export function createTenantDirectory(tenants: readonly Tenant[]) {
 export function createRoleIndex(roles: readonly RoleDefinition[]) {
   return new Map(roles.map((role) => [role.id, role]));
 }
+
+export * from "./search/index.js";

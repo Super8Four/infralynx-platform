@@ -1,13 +1,16 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { shellNavigation, getNavigationItem, workspacePanels } from "../../../packages/ui/dist/index.js";
+import { GlobalSearch } from "./components/search/GlobalSearch.js";
 import { RackElevation } from "./components/rack/RackElevation.js";
 import { TopologyGraph } from "./components/topology/TopologyGraph.js";
 import { IpamTree } from "./components/ipam-tree/IpamTree.js";
 import { useDomainOverview } from "./hooks/use-domain-overview.js";
+import { useGlobalSearch } from "./hooks/use-global-search.js";
 import { useIpamTree } from "./hooks/use-ipam-tree.js";
 import { useRackElevation } from "./hooks/use-rack-elevation.js";
 import { useTopologyGraph } from "./hooks/use-topology-graph.js";
+import type { UiSearchResult } from "./services/search/global-search.js";
 
 function getSectionFromHash(): string {
   const hash = window.location.hash.replace(/^#/, "");
@@ -32,6 +35,7 @@ export function App() {
   const [activeSection, setActiveSection] = useState(() => getSectionFromHash());
   const deferredSection = useDeferredValue(activeSection);
   const { status, data, errorMessage, retry } = useDomainOverview();
+  const search = useGlobalSearch();
   const ipamTree = useIpamTree();
   const rack = useRackElevation();
   const topology = useTopologyGraph();
@@ -81,6 +85,14 @@ export function App() {
   const showTopologyStage =
     deferredSection === "operations" && topology.status !== "error" && topology.data !== null;
 
+  const handleSearchResultSelect = (result: UiSearchResult) => {
+    search.selectResult(result.id);
+    startTransition(() => {
+      setActiveSection(result.domain);
+    });
+    window.location.hash = result.domain;
+  };
+
   return (
     <div className="shell">
       <aside className="shell__rail">
@@ -124,6 +136,19 @@ export function App() {
             <strong>{formatSyncTime(data?.syncedAt ?? null)}</strong>
           </div>
         </header>
+
+        <GlobalSearch
+          status={search.status}
+          query={search.query}
+          selectedDomain={search.selectedDomain}
+          data={search.data}
+          errorMessage={search.errorMessage}
+          selectedResultId={search.selectedResultId}
+          onQueryChange={search.updateQuery}
+          onDomainChange={search.updateDomain}
+          onResultSelect={handleSearchResultSelect}
+          onRetry={search.retry}
+        />
 
         <section className="shell__hero" id={activeItem.id}>
           <div className="shell__hero-copy">
@@ -328,6 +353,9 @@ export function App() {
               <li key={notice}>{notice}</li>
             ))}
             {(showTopologyStage ? topology.data?.guidance ?? [] : []).map((notice) => (
+              <li key={notice}>{notice}</li>
+            ))}
+            {(search.status === "ready" ? search.data?.guidance ?? [] : []).map((notice) => (
               <li key={notice}>{notice}</li>
             ))}
           </ul>
