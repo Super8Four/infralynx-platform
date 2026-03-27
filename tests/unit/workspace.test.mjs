@@ -28,7 +28,9 @@ import {
   validatePrefixHierarchyBinding
 } from "../../packages/network-domain/dist/index.js";
 import {
+  createDefaultTopologyFilter,
   createRackUnitSlots,
+  filterTopologyGraph,
   getDeviceCoverageLabel,
   shellNavigation,
   workspacePanels
@@ -43,6 +45,7 @@ import {
 } from "../../packages/ipam-domain/dist/index.js";
 import { coreDomains, platformBoundaries } from "../../packages/domain-core/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
+import { createTopologyView } from "../../packages/network-domain/dist/index.js";
 
 test("workspace metadata identifies the platform runtime", () => {
   assert.equal(workspaceMetadata.name, "InfraLynx Platform");
@@ -336,4 +339,65 @@ test("network topology and path tracing stay deterministic", () => {
   assert.equal(path.found, true);
   assert.equal(path.path.length, 2);
   assert.equal(path.path[1]?.kind, "l3-adjacency");
+});
+
+test("topology view scaffolds keep layout and filtering deterministic", () => {
+  const graph = createTopologyView(
+    [
+      {
+        id: "device-leaf-sw1",
+        name: "leaf-sw1",
+        role: "Top-of-rack switch",
+        tone: "network",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["leaf-sw1:xe-0/0/1"],
+        vlanIds: ["vlan-120"]
+      },
+      {
+        id: "device-server-01",
+        name: "compute-01",
+        role: "Application host",
+        tone: "compute",
+        siteId: "site-dal1",
+        siteName: "Dallas One",
+        interfaceIds: ["compute-01:eth0"],
+        vlanIds: ["vlan-120"]
+      },
+      {
+        id: "device-server-02",
+        name: "compute-02",
+        role: "Application host",
+        tone: "compute",
+        siteId: "site-phx1",
+        siteName: "Phoenix One",
+        interfaceIds: ["compute-02:eth0"],
+        vlanIds: ["vlan-220"]
+      }
+    ],
+    [
+      {
+        id: "edge-1",
+        fromDeviceId: "device-leaf-sw1",
+        toDeviceId: "device-server-01",
+        kind: "cable-link",
+        label: "access-a",
+        vlanIds: ["vlan-120"]
+      }
+    ]
+  );
+  const filtered = filterTopologyGraph(graph, {
+    ...createDefaultTopologyFilter(),
+    siteId: "site-dal1",
+    vlanId: "vlan-120"
+  });
+  const leafNode = graph.nodes.find((node) => node.id === "device-leaf-sw1");
+  const dallasComputeNode = graph.nodes.find((node) => node.id === "device-server-01");
+
+  assert.equal(leafNode?.label, "leaf-sw1");
+  assert.equal(leafNode?.position.x, 160);
+  assert.equal((dallasComputeNode?.position.y ?? 0) > (leafNode?.position.y ?? 0), true);
+  assert.equal(filtered.nodes.length, 2);
+  assert.equal(filtered.edges.length, 1);
+  assert.equal(filtered.nodes.some((node) => node.siteId === "site-phx1"), false);
 });

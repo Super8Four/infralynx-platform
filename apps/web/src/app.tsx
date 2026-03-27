@@ -2,8 +2,10 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 
 
 import { shellNavigation, getNavigationItem, workspacePanels } from "../../../packages/ui/dist/index.js";
 import { RackElevation } from "./components/rack/RackElevation.js";
+import { TopologyGraph } from "./components/topology/TopologyGraph.js";
 import { useDomainOverview } from "./hooks/use-domain-overview.js";
 import { useRackElevation } from "./hooks/use-rack-elevation.js";
+import { useTopologyGraph } from "./hooks/use-topology-graph.js";
 
 function getSectionFromHash(): string {
   const hash = window.location.hash.replace(/^#/, "");
@@ -29,6 +31,7 @@ export function App() {
   const deferredSection = useDeferredValue(activeSection);
   const { status, data, errorMessage, retry } = useDomainOverview();
   const rack = useRackElevation();
+  const topology = useTopologyGraph();
 
   useEffect(() => {
     const onHashChange = () => {
@@ -70,6 +73,8 @@ export function App() {
   const visiblePanels = domainPanels.length > 0 ? domainPanels : fallbackPanels;
   const showRackStage =
     deferredSection === "dcim" && rack.status !== "error" && rack.data !== null;
+  const showTopologyStage =
+    deferredSection === "operations" && topology.status !== "error" && topology.data !== null;
 
   return (
     <div className="shell">
@@ -224,6 +229,41 @@ export function App() {
               onPortSelect={rack.selectPort}
             />
           ) : null}
+
+          {topology.status === "loading" && deferredSection === "operations" ? (
+            <div className="shell__callout">
+              <strong>Loading topology graph</strong>
+              <span>Assembling the filtered graph model, node layout, and interactive viewport state.</span>
+              <div className="shell__loading-bar" aria-hidden="true" />
+            </div>
+          ) : null}
+
+          {topology.status === "error" && deferredSection === "operations" ? (
+            <div className="shell__callout shell__callout--error">
+              <strong>Topology visualization unavailable</strong>
+              <span>{topology.errorMessage}</span>
+              <button type="button" className="shell__button" onClick={topology.retry}>
+                Retry topology fetch
+              </button>
+            </div>
+          ) : null}
+
+          {showTopologyStage ? (
+            <TopologyGraph
+              graph={topology.data.graph}
+              selectedNodeId={topology.selectedNodeId}
+              filter={topology.filter}
+              filterOptions={topology.data.options}
+              viewport={topology.viewport}
+              syncedAt={topology.data.syncedAt}
+              onSelectNode={topology.selectNode}
+              onFilterChange={topology.updateFilter}
+              onViewportChange={topology.updateViewport}
+              onZoomIn={topology.zoomIn}
+              onZoomOut={topology.zoomOut}
+              onResetViewport={topology.resetViewport}
+            />
+          ) : null}
         </section>
       </main>
 
@@ -249,6 +289,9 @@ export function App() {
               <li key={notice}>{notice}</li>
             ))}
             {(showRackStage ? rack.data?.guidance ?? [] : []).map((notice) => (
+              <li key={notice}>{notice}</li>
+            ))}
+            {(showTopologyStage ? topology.data?.guidance ?? [] : []).map((notice) => (
               <li key={notice}>{notice}</li>
             ))}
           </ul>
