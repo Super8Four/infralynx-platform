@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { workspaceMetadata } from "../../packages/config/dist/index.js";
 import {
@@ -57,6 +60,14 @@ import {
   validatePrefixHierarchy
 } from "../../packages/ipam-domain/dist/index.js";
 import { coreDomains, platformBoundaries } from "../../packages/domain-core/dist/index.js";
+import {
+  createFileBackedMediaRepository,
+  createMediaLinks,
+  createMediaRecord,
+  resolveMediaAccess,
+  validateMediaUpload
+} from "../../packages/media-core/dist/index.js";
+import { createLocalMediaStorage } from "../../packages/media-storage/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
 import { createTopologyView } from "../../packages/network-domain/dist/index.js";
 
@@ -527,4 +538,75 @@ test("topology view scaffolds keep layout and filtering deterministic", () => {
   assert.equal(filtered.nodes.length, 2);
   assert.equal(filtered.edges.length, 1);
   assert.equal(filtered.nodes.some((node) => node.siteId === "site-phx1"), false);
+});
+
+test("media scaffolds persist metadata, links, and local storage objects", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-media-"));
+
+  try {
+    const repository = createFileBackedMediaRepository(join(tempRoot, "metadata.json"));
+    const storage = createLocalMediaStorage(join(tempRoot, "objects"));
+    const content = Buffer.from("rack-photo");
+    const uploadValidation = validateMediaUpload({
+      filename: "rack-a1.png",
+      contentType: "image/png",
+      size: content.byteLength,
+      tenantId: "tenant-ops",
+      createdBy: "user-1",
+      associations: [{ objectType: "rack", objectId: "rack-a1" }]
+    });
+    const storedObject = storage.writeObject({
+      mediaId: "media-1",
+      tenantId: "tenant-ops",
+      filename: "rack-a1.png",
+      content
+    });
+    const record = createMediaRecord({
+      id: "media-1",
+      filename: "rack-a1.png",
+      contentType: "image/png",
+      size: content.byteLength,
+      storagePath: storedObject.storagePath,
+      tenantId: "tenant-ops",
+      createdBy: "user-1",
+      createdAt: "2026-03-27T12:00:00.000Z"
+    });
+
+    repository.saveMedia(record);
+    repository.saveLinks(createMediaLinks(record.id, [{ objectType: "rack", objectId: "rack-a1" }]));
+
+    assert.equal(uploadValidation.valid, true);
+    assert.equal(repository.getMediaById("media-1")?.filename, "rack-a1.png");
+    assert.equal(repository.listLinksByMediaId("media-1")[0]?.objectId, "rack-a1");
+    assert.equal(repository.listMediaByObject("rack", "rack-a1", "tenant-ops").length, 1);
+    assert.equal(Buffer.from(storage.readObject(storedObject.storagePath)).toString("utf8"), "rack-photo");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("media scaffolds enforce RBAC-aware access decisions", () => {
+  const writerDecision = resolveMediaAccess(
+    {
+      id: "user-1",
+      subject: "user-1",
+      tenantId: "tenant-ops",
+      method: "api-token",
+      roleIds: ["core-platform-admin"]
+    },
+    "media:write"
+  );
+  const auditorDecision = resolveMediaAccess(
+    {
+      id: "auditor-1",
+      subject: "auditor-1",
+      tenantId: "tenant-ops",
+      method: "api-token",
+      roleIds: ["core-auditor"]
+    },
+    "media:write"
+  );
+
+  assert.equal(writerDecision.allowed, true);
+  assert.equal(auditorDecision.allowed, false);
 });

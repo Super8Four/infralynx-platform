@@ -34,3 +34,4 @@ Thumbs.db
 temp/
 .cache/
 *.tsbuildinfo
+apps/api/media-data/
