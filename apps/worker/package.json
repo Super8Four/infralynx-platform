@@ -13,6 +13,7 @@
     "@infralynx/data-transfer": "*",
     "@infralynx/job-core": "*",
     "@infralynx/job-queue": "*",
+    "@infralynx/scheduler": "*",
     "@infralynx/domain-core": "*",
     "@infralynx/shared": "*"
   }

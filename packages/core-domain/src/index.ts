@@ -8,7 +8,8 @@ export type StatusScope =
   | "job"
   | "transfer"
   | "event"
-  | "webhook";
+  | "webhook"
+  | "schedule";
 
 export type LinkableObjectType = "tenant" | "device" | "rack" | "site";
 
@@ -76,7 +77,10 @@ export const defaultCorePermissions: readonly PermissionDefinition[] = [
   { id: "webhook:read", resource: "webhook", action: "read" },
   { id: "webhook:write", resource: "webhook", action: "write" },
   { id: "webhook:delete", resource: "webhook", action: "delete" },
-  { id: "webhook:deliver", resource: "webhook", action: "execute" }
+  { id: "webhook:deliver", resource: "webhook", action: "execute" },
+  { id: "schedule:read", resource: "schedule", action: "read" },
+  { id: "schedule:write", resource: "schedule", action: "write" },
+  { id: "schedule:execute", resource: "schedule", action: "execute" }
 ] as const;
 
 export const defaultCoreRoles: readonly RoleDefinition[] = [
@@ -98,7 +102,8 @@ export const defaultCoreRoles: readonly RoleDefinition[] = [
       "job:read",
       "transfer:read",
       "event:read",
-      "webhook:read"
+      "webhook:read",
+      "schedule:read"
     ]
   }
 ] as const;
