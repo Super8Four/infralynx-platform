@@ -3,9 +3,16 @@ import { pathToFileURL } from "node:url";
 
 import { workspaceMetadata } from "../../../packages/config/dist/index.js";
 import {
+  createSearchQuery,
+  getSearchDomainLabel,
+  getSearchDomainOptions,
+  groupSearchResults,
+  searchRecords,
   defaultCorePermissions,
   defaultCoreRoles,
   defaultTenantStatuses,
+  type SearchDomain,
+  type SearchRecord,
   type Tenant
 } from "../../../packages/core-domain/dist/index.js";
 import { type Rack, type Site, validateCable, validateRackPosition } from "../../../packages/dcim-domain/dist/index.js";
@@ -117,6 +124,42 @@ export interface ApiIpamTreeResponse {
   readonly guidance: readonly string[];
 }
 
+export interface ApiSearchFilterOptionResponse {
+  readonly value: SearchDomain | "all";
+  readonly label: string;
+  readonly count: number;
+}
+
+export interface ApiSearchResultResponse {
+  readonly id: string;
+  readonly domain: SearchDomain;
+  readonly domainLabel: string;
+  readonly kind: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly location: string;
+  readonly status: string | null;
+  readonly matchedTerms: readonly string[];
+  readonly tags: readonly string[];
+  readonly score: number;
+}
+
+export interface ApiSearchResultGroupResponse {
+  readonly domain: SearchDomain;
+  readonly label: string;
+  readonly results: readonly ApiSearchResultResponse[];
+}
+
+export interface ApiSearchResponse {
+  readonly generatedAt: string;
+  readonly query: string;
+  readonly selectedDomain: SearchDomain | "all";
+  readonly totalResults: number;
+  readonly availableDomains: readonly ApiSearchFilterOptionResponse[];
+  readonly groups: readonly ApiSearchResultGroupResponse[];
+  readonly guidance: readonly string[];
+}
+
 const referenceTenants: readonly Tenant[] = [
   { id: "tenant-ops", slug: "operations", name: "Operations", status: "active" },
   { id: "tenant-net", slug: "network-engineering", name: "Network Engineering", status: "active" }
@@ -194,6 +237,202 @@ const referenceRacks: readonly Rack[] = [
   { id: "rack-a1", siteId: "site-dal1", name: "A1", totalUnits: 42 },
   { id: "rack-a2", siteId: "site-dal1", name: "A2", totalUnits: 42 }
 ] as const;
+
+function createSearchRecords(): readonly SearchRecord[] {
+  const rackResponse = createRackResponse();
+  const topologyResponse = createTopologyResponse();
+
+  return [
+    ...referenceTenants.map((tenant) => ({
+      id: tenant.id,
+      domain: "core" as const,
+      kind: "tenant",
+      title: tenant.name,
+      summary: `${tenant.name} tenant boundary with ${tenant.status} lifecycle state.`,
+      location: `Core / Tenants / ${tenant.slug}`,
+      keywords: [tenant.slug, tenant.status, "tenant"],
+      tags: ["core", "tenancy"],
+      status: tenant.status
+    })),
+    ...defaultCoreRoles.map((role) => ({
+      id: role.id,
+      domain: "core" as const,
+      kind: "role",
+      title: role.name,
+      summary: `${role.permissionIds.length} permissions assigned to ${role.slug}.`,
+      location: `Core / RBAC / ${role.slug}`,
+      keywords: [role.slug, "rbac", "role", ...role.permissionIds],
+      tags: ["core", "rbac"],
+      status: "active"
+    })),
+    ...defaultCorePermissions.map((permission) => ({
+      id: permission.id,
+      domain: "core" as const,
+      kind: "permission",
+      title: permission.id,
+      summary: `${permission.action} access on ${permission.resource}.`,
+      location: `Core / Permissions / ${permission.resource}`,
+      keywords: [permission.resource, permission.action, "permission"],
+      tags: ["core", "rbac"],
+      status: "active"
+    })),
+    ...referenceVrfs.map((vrf) => ({
+      id: vrf.id,
+      domain: "ipam" as const,
+      kind: "vrf",
+      title: vrf.name,
+      summary: `VRF ${vrf.rd ?? "unassigned"} with ${vrf.tenantId ?? "shared"} tenancy.`,
+      location: `IPAM / VRFs / ${vrf.name}`,
+      keywords: [vrf.name, vrf.rd ?? "", "vrf"],
+      tags: ["ipam", "vrf"],
+      status: "active"
+    })),
+    ...createIpamTreeResponse().prefixes.map((prefix) => ({
+      id: prefix.id,
+      domain: "ipam" as const,
+      kind: "prefix",
+      title: prefix.cidr,
+      summary: `${prefix.status} ${prefix.allocationMode} prefix in ${prefix.vrfId ?? "global"} scope.`,
+      location: `IPAM / Prefixes / ${prefix.cidr}`,
+      keywords: [prefix.cidr, prefix.status, prefix.allocationMode, prefix.vrfId ?? ""],
+      tags: ["ipam", "prefix"],
+      status: prefix.status
+    })),
+    ...referenceAddresses.map((address) => ({
+      id: address.id,
+      domain: "ipam" as const,
+      kind: "ip-address",
+      title: address.address,
+      summary: `${address.role} address bound to ${address.interfaceId ?? "unassigned interface"}.`,
+      location: `IPAM / Addresses / ${address.address}`,
+      keywords: [address.address, address.role, address.interfaceId ?? "", "ip"],
+      tags: ["ipam", "address"],
+      status: address.status
+    })),
+    ...referenceVlans.map((vlan) => ({
+      id: vlan.id,
+      domain: "ipam" as const,
+      kind: "vlan",
+      title: `${vlan.name} (VLAN ${vlan.vlanId})`,
+      summary: `${vlan.interfaceIds.length} interfaces assigned to VLAN ${vlan.vlanId}.`,
+      location: `IPAM / VLANs / ${vlan.vlanId}`,
+      keywords: [vlan.name, String(vlan.vlanId), "vlan"],
+      tags: ["ipam", "vlan"],
+      status: vlan.status
+    })),
+    ...referenceSites.map((site) => ({
+      id: site.id,
+      domain: "dcim" as const,
+      kind: "site",
+      title: site.name,
+      summary: `Physical site ${site.slug} for tenant ${site.tenantId ?? "shared"}.`,
+      location: `DCIM / Sites / ${site.slug}`,
+      keywords: [site.slug, site.name, "site"],
+      tags: ["dcim", "site"],
+      status: "active"
+    })),
+    ...referenceRacks.map((rack) => ({
+      id: rack.id,
+      domain: "dcim" as const,
+      kind: "rack",
+      title: rack.name,
+      summary: `${rack.totalUnits}U rack in site ${rack.siteId}.`,
+      location: `DCIM / Racks / ${rack.name}`,
+      keywords: [rack.name, rack.siteId, "rack", `${rack.totalUnits}u`],
+      tags: ["dcim", "rack"],
+      status: "active"
+    })),
+    ...rackResponse.rack.devices.map((device) => ({
+      id: device.id,
+      domain: "dcim" as const,
+      kind: "device",
+      title: device.name,
+      summary: `${device.role} occupying ${device.heightUnits}U starting at U${device.startUnit}.`,
+      location: `DCIM / Devices / ${device.name}`,
+      keywords: [device.name, device.role, device.tone, ...device.ports.map((port) => port.label)],
+      tags: ["dcim", "device", device.tone],
+      status: "active"
+    })),
+    ...topologyResponse.graph.nodes.map((node) => ({
+      id: node.id,
+      domain: "operations" as const,
+      kind: "topology-node",
+      title: node.label,
+      summary: `${node.role} in ${node.siteName} with ${node.interfaceCount} interfaces.`,
+      location: `Operations / Topology / ${node.siteName}`,
+      keywords: [node.label, node.role, node.siteName, ...node.vlanIds],
+      tags: ["operations", "topology"],
+      status: "live"
+    })),
+    ...topologyResponse.graph.edges.map((edge) => ({
+      id: edge.id,
+      domain: "operations" as const,
+      kind: edge.kind,
+      title: edge.label,
+      summary: `${edge.kind} relationship between ${edge.fromNodeId} and ${edge.toNodeId}.`,
+      location: `Operations / Topology / ${edge.siteId}`,
+      keywords: [edge.label, edge.kind, edge.fromNodeId, edge.toNodeId, ...edge.vlanIds],
+      tags: ["operations", "topology", edge.kind],
+      status: "live"
+    })),
+    {
+      id: "automation-job-catalog",
+      domain: "automation" as const,
+      kind: "job-catalog",
+      title: "Automation job catalog",
+      summary: "Future automation, import, export, and webhook catalog placeholder.",
+      location: "Automation / Jobs / Planned",
+      keywords: ["automation", "jobs", "webhooks", "imports", "exports"],
+      tags: ["automation", "planned"],
+      status: "planned"
+    }
+  ];
+}
+
+function createSearchResponse(queryText: string, domain: SearchDomain | "all"): ApiSearchResponse {
+  const records = createSearchRecords();
+  const query = createSearchQuery(queryText, domain);
+  const domainAgnosticMatches = searchRecords(records, createSearchQuery(queryText, "all"));
+  const matches = searchRecords(records, query);
+  const groups = groupSearchResults(matches);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    query: query.text,
+    selectedDomain: domain,
+    totalResults: matches.length,
+    availableDomains: getSearchDomainOptions().map((option) => ({
+      value: option.value,
+      label: option.label,
+      count:
+        option.value === "all"
+          ? domainAgnosticMatches.length
+          : domainAgnosticMatches.filter((match) => match.record.domain === option.value).length
+    })),
+    groups: groups.map((group) => ({
+      domain: group.domain,
+      label: group.label,
+      results: group.results.map((match) => ({
+        id: match.record.id,
+        domain: match.record.domain,
+        domainLabel: getSearchDomainLabel(match.record.domain),
+        kind: match.record.kind,
+        title: match.record.title,
+        summary: match.record.summary,
+        location: match.record.location,
+        status: match.record.status,
+        matchedTerms: match.matchedTerms,
+        tags: match.record.tags,
+        score: match.score
+      }))
+    })),
+    guidance: [
+      "Search results are generated from explicit domain records, not direct UI-side joins.",
+      "Keyword and partial-match scoring stays deterministic so future indexing can preserve behavior.",
+      "Domain filters narrow the centralized result set without changing the underlying search contract."
+    ]
+  };
+}
 
 function createRackResponse(): ApiRackResponse {
   return {
@@ -918,6 +1157,22 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
   if (request.method === "GET" && requestUrl.pathname === "/api/ipam-tree/demo") {
     sendJson(response, 200, createIpamTreeResponse());
+
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/search") {
+    const rawDomain = requestUrl.searchParams.get("domain");
+    const domain: SearchDomain | "all" =
+      rawDomain === "core" ||
+      rawDomain === "ipam" ||
+      rawDomain === "dcim" ||
+      rawDomain === "operations" ||
+      rawDomain === "automation"
+        ? rawDomain
+        : "all";
+
+    sendJson(response, 200, createSearchResponse(requestUrl.searchParams.get("q") ?? "", domain));
 
     return;
   }
