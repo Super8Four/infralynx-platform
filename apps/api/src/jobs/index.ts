@@ -10,6 +10,7 @@ import {
   type JobRecord
 } from "../../../../packages/job-core/dist/index.js";
 import { createFileBackedJobQueueStore } from "../../../../packages/job-queue/dist/index.js";
+import { emitPlatformEvent } from "../webhooks/index.js";
 
 interface CreateJobPayload {
   readonly type: string;
@@ -160,6 +161,15 @@ async function handleCreateJob(
   });
 
   jobQueue.enqueue(job);
+  emitPlatformEvent({
+    type: "job.created",
+    createdBy: context.id,
+    payload: {
+      jobId: job.id,
+      jobType: job.type,
+      status: job.status
+    }
+  });
 
   sendJson(response, 201, {
     job: mapJobResponse(job)

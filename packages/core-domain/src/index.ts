@@ -6,7 +6,9 @@ export type StatusScope =
   | "audit"
   | "media"
   | "job"
-  | "transfer";
+  | "transfer"
+  | "event"
+  | "webhook";
 
 export type LinkableObjectType = "tenant" | "device" | "rack" | "site";
 
@@ -69,7 +71,12 @@ export const defaultCorePermissions: readonly PermissionDefinition[] = [
   { id: "job:write", resource: "job", action: "write" },
   { id: "job:execute", resource: "job", action: "execute" },
   { id: "transfer:read", resource: "transfer", action: "read" },
-  { id: "transfer:write", resource: "transfer", action: "write" }
+  { id: "transfer:write", resource: "transfer", action: "write" },
+  { id: "event:read", resource: "event", action: "read" },
+  { id: "webhook:read", resource: "webhook", action: "read" },
+  { id: "webhook:write", resource: "webhook", action: "write" },
+  { id: "webhook:delete", resource: "webhook", action: "delete" },
+  { id: "webhook:deliver", resource: "webhook", action: "execute" }
 ] as const;
 
 export const defaultCoreRoles: readonly RoleDefinition[] = [
@@ -83,7 +90,16 @@ export const defaultCoreRoles: readonly RoleDefinition[] = [
     id: "core-auditor",
     slug: "auditor",
     name: "Auditor",
-    permissionIds: ["tenant:read", "status:read", "audit:read", "media:read", "job:read", "transfer:read"]
+    permissionIds: [
+      "tenant:read",
+      "status:read",
+      "audit:read",
+      "media:read",
+      "job:read",
+      "transfer:read",
+      "event:read",
+      "webhook:read"
+    ]
   }
 ] as const;
 

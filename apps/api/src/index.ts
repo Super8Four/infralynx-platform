@@ -40,6 +40,7 @@ import { handleImportApiRequest } from "./import/index.js";
 import { handleInventoryApiRequest } from "./inventory/index.js";
 import { handleJobsApiRequest } from "./jobs/index.js";
 import { handleMediaApiRequest } from "./media/index.js";
+import { handleWebhooksApiRequest } from "./webhooks/index.js";
 
 export interface ApiMetricResponse {
   readonly label: string;
@@ -1245,6 +1246,21 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
   if (requestUrl.pathname.startsWith("/api/jobs")) {
     void handleJobsApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/webhooks") || requestUrl.pathname.startsWith("/api/events")) {
+    void handleWebhooksApiRequest(request, response).then((handled) => {
       if (!handled) {
         sendJson(response, 404, {
           error: {
