@@ -1,17 +1,14 @@
 # Security Policy
 
+To report a suspected security issue, do not open a public GitHub issue.
+
 ## Reporting
 
-Do not disclose vulnerabilities through public issues or pull requests.
+- Email the maintainers through the private security contact listed in repository support channels.
+- Include reproduction details, impact, affected versions, and any temporary mitigations.
 
-Security concerns must be reported privately through approved owner channels until a dedicated reporting address or intake form is provisioned.
+## Response Expectations
 
-## Handling
-
-- Limit access to exploit details.
-- Track remediation with least necessary visibility.
-- Coordinate disclosure only after a fix or mitigation is available.
-
-## Scope
-
-This policy applies across all InfraLynx repositories, build pipelines, environments, and dependencies.
+- Initial triage target: 3 business days
+- Status update target: 7 business days
+- Coordinated disclosure preferred after a fix or mitigation is ready
