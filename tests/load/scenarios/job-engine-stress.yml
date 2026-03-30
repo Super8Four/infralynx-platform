@@ -20,12 +20,12 @@ scenarios:
   - name: enqueue-and-read-jobs
     flow:
       - post:
-          url: /api/jobs
+          url: /api/v1/jobs
           json:
             type: core.echo
             payload:
               message: load-test
       - get:
-          url: /api/jobs
+          url: /api/v1/jobs
       - get:
-          url: /api/jobs?status=pending
+          url: /api/v1/jobs?status=pending

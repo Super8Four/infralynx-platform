@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@infralynx/api-contracts": "*",
     "@infralynx/audit": "*",
     "@infralynx/auth": "*",
     "@infralynx/backup": "*",

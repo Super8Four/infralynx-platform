@@ -1,4 +1,5 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 
 import { workspaceMetadata } from "../../../packages/config/dist/index.js";
@@ -54,6 +55,18 @@ import { handleSchedulerApiRequest } from "./scheduler/index.js";
 import { handleValidationApiRequest } from "./validation/index.js";
 import { handleWebhooksApiRequest } from "./webhooks/index.js";
 import { handleWorkflowsApiRequest } from "./workflows/index.js";
+import {
+  createLegacyDeprecationHeaders,
+  createV1Headers,
+  createVersionedErrorPayload,
+  createVersionedSuccessPayload,
+  isVersionedApiPath,
+  resolveValidationTarget,
+  toLegacyApiPath,
+  validateBody,
+  validateQuery,
+  validateResponse
+} from "./v1/index.js";
 
 export interface ApiMetricResponse {
   readonly label: string;
@@ -1160,7 +1173,238 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
   response.end(JSON.stringify(payload));
 }
 
-export function handleApiRequest(request: IncomingMessage, response: ServerResponse) {
+class BufferedServerResponse {
+  statusCode = 200;
+  private readonly headerMap = new Map<string, string | number | readonly string[]>();
+  private readonly chunks: Buffer[] = [];
+  private resolveCompletion!: () => void;
+  readonly completed = new Promise<void>((resolve) => {
+    this.resolveCompletion = resolve;
+  });
+
+  writeHead(
+    statusCode: number,
+    headers?: Record<string, string | number | readonly string[]>
+  ) {
+    this.statusCode = statusCode;
+
+    if (headers) {
+      for (const [name, value] of Object.entries(headers)) {
+        this.setHeader(name, value);
+      }
+    }
+
+    return this;
+  }
+
+  setHeader(name: string, value: string | number | readonly string[]) {
+    this.headerMap.set(name.toLowerCase(), value);
+  }
+
+  getHeader(name: string) {
+    return this.headerMap.get(name.toLowerCase());
+  }
+
+  getHeaders() {
+    return Object.fromEntries(this.headerMap.entries());
+  }
+
+  removeHeader(name: string) {
+    this.headerMap.delete(name.toLowerCase());
+  }
+
+  write(chunk: string | Uint8Array) {
+    this.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    return true;
+  }
+
+  end(chunk?: string | Uint8Array) {
+    if (chunk !== undefined) {
+      this.write(chunk);
+    }
+
+    this.resolveCompletion();
+    return this;
+  }
+
+  get body() {
+    return Buffer.concat(this.chunks);
+  }
+}
+
+function readRequestBodyBuffer(request: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolveBody, rejectBody) => {
+    const chunks: Buffer[] = [];
+
+    request.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    request.on("end", () => resolveBody(Buffer.concat(chunks)));
+    request.on("error", rejectBody);
+  });
+}
+
+function createReplayRequest(
+  request: IncomingMessage,
+  pathname: string,
+  search: string,
+  body: Buffer
+) {
+  const replay = Readable.from(body.byteLength > 0 ? [body] : []) as IncomingMessage;
+
+  Object.assign(replay, {
+    method: request.method,
+    url: `${pathname}${search}`,
+    headers: request.headers,
+    rawHeaders: request.rawHeaders,
+    httpVersion: request.httpVersion,
+    socket: request.socket
+  });
+
+  return replay;
+}
+
+function getContentType(headers: Record<string, string | number | readonly string[]>) {
+  const value = headers["content-type"];
+
+  if (Array.isArray(value)) {
+    return value[0] ?? "";
+  }
+
+  return typeof value === "string" ? value : "";
+}
+
+function extractQueryObject(requestUrl: URL) {
+  return Object.fromEntries(requestUrl.searchParams.entries());
+}
+
+function sendBufferedResponse(
+  response: ServerResponse,
+  buffered: BufferedServerResponse,
+  statusCode: number,
+  headers: OutgoingHttpHeaders,
+  body: Buffer
+) {
+  response.writeHead(statusCode, headers);
+  response.end(body);
+}
+
+async function handleVersionedApiRequest(request: IncomingMessage, response: ServerResponse) {
+  const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+  const legacyPathname = toLegacyApiPath(requestUrl.pathname);
+  const validationTarget = resolveValidationTarget(request.method ?? "GET", legacyPathname);
+  const queryValidation = validateQuery(validationTarget?.querySchema, extractQueryObject(requestUrl));
+
+  if (!queryValidation.success) {
+    sendJson(response, 400, createVersionedErrorPayload(
+      "invalid_query",
+      "request query parameters failed validation",
+      queryValidation.error.flatten()
+    ));
+    return;
+  }
+
+  const contentType = String(request.headers["content-type"] ?? "");
+  let delegatedRequest = request;
+
+  if (validationTarget?.bodySchema || contentType.includes("application/json")) {
+    const bodyBuffer = await readRequestBodyBuffer(request);
+    const bodyText = bodyBuffer.toString("utf8");
+    let parsedBody: unknown = {};
+
+    if (bodyText.trim().length > 0) {
+      try {
+        parsedBody = JSON.parse(bodyText);
+      } catch (error) {
+        sendJson(response, 400, createVersionedErrorPayload(
+          "invalid_json",
+          error instanceof Error ? error.message : "request body must be valid JSON"
+        ));
+        return;
+      }
+    }
+
+    const bodyValidation = validateBody(validationTarget?.bodySchema, parsedBody);
+
+    if (!bodyValidation.success) {
+      sendJson(response, 400, createVersionedErrorPayload(
+        "invalid_body",
+        "request body failed validation",
+        bodyValidation.error.flatten()
+      ));
+      return;
+    }
+
+    delegatedRequest = createReplayRequest(request, legacyPathname, requestUrl.search, bodyBuffer);
+  } else {
+    delegatedRequest = Object.assign(Object.create(request), {
+      url: `${legacyPathname}${requestUrl.search}`
+    }) as IncomingMessage;
+  }
+
+  const bufferedResponse = new BufferedServerResponse();
+  handleLegacyApiRequest(delegatedRequest, bufferedResponse as unknown as ServerResponse);
+  await bufferedResponse.completed;
+
+  const baseHeaders = {
+    ...bufferedResponse.getHeaders(),
+    ...createV1Headers()
+  };
+  const responseContentType = getContentType(baseHeaders);
+  const isJsonResponse = responseContentType.includes("application/json");
+
+  if (!isJsonResponse) {
+    sendBufferedResponse(response, bufferedResponse, bufferedResponse.statusCode, baseHeaders, bufferedResponse.body);
+    return;
+  }
+
+  let parsedPayload: unknown;
+
+  try {
+    parsedPayload = bufferedResponse.body.byteLength > 0 ? JSON.parse(bufferedResponse.body.toString("utf8")) : {};
+  } catch {
+    sendJson(response, 500, createVersionedErrorPayload(
+      "invalid_response_payload",
+      "versioned API expected a valid JSON response body"
+    ));
+    return;
+  }
+
+  const normalizedPayload =
+    bufferedResponse.statusCode >= 400
+      ? (
+        parsedPayload &&
+        typeof parsedPayload === "object" &&
+        "error" in parsedPayload
+      )
+        ? createVersionedSuccessPayload(parsedPayload)
+        : createVersionedErrorPayload(
+          "request_failed",
+          `request failed with status ${bufferedResponse.statusCode}`,
+          parsedPayload
+        )
+      : createVersionedSuccessPayload(parsedPayload);
+
+  const responseValidation = validateResponse(validationTarget?.responseSchema, normalizedPayload);
+
+  if (bufferedResponse.statusCode < 400 && !responseValidation.success) {
+    sendJson(response, 500, createVersionedErrorPayload(
+      "response_contract_violation",
+      "response payload failed API contract validation",
+      responseValidation.error.flatten()
+    ));
+    return;
+  }
+
+  const serializedBody = Buffer.from(JSON.stringify(normalizedPayload));
+  sendBufferedResponse(response, bufferedResponse, bufferedResponse.statusCode, {
+    ...baseHeaders,
+    "content-type": "application/json; charset=utf-8",
+    "content-length": String(serializedBody.byteLength)
+  }, serializedBody);
+}
+
+export function handleLegacyApiRequest(request: IncomingMessage, response: ServerResponse) {
   const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
   if (request.method === "OPTIONS") {
@@ -1445,6 +1689,23 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
       message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
     }
   });
+}
+
+export function handleApiRequest(request: IncomingMessage, response: ServerResponse) {
+  const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+
+  if (isVersionedApiPath(requestUrl.pathname)) {
+    void handleVersionedApiRequest(request, response);
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api")) {
+    for (const [name, value] of Object.entries(createLegacyDeprecationHeaders())) {
+      response.setHeader(name, value);
+    }
+  }
+
+  handleLegacyApiRequest(request, response);
 }
 
 export function describeApiSurface(): string {

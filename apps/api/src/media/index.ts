@@ -217,7 +217,7 @@ function mapMediaResponse(recordId: string, host: string): ApiMediaResponse | nu
       objectType: link.objectType,
       objectId: link.objectId
     })),
-    contentUrl: `http://${host}/api/media/${record.id}/content`,
+    contentUrl: `http://${host}/api/v1/media/${record.id}/content`,
     description: describeMediaRecord(record, links)
   };
 }

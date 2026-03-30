@@ -33,6 +33,12 @@ import {
   renderIndexMigration
 } from "../../packages/db-performance/dist/index.js";
 import {
+  createStandardErrorResponse,
+  createVersionedApiPath,
+  localLoginRequestSchema,
+  searchQuerySchema
+} from "../../packages/api-contracts/dist/index.js";
+import {
   getLoadScenarios,
   renderScenarioSummary
 } from "../../packages/performance-tests/dist/index.js";
@@ -478,6 +484,27 @@ test("performance test scaffolds expose stable load scenarios and thresholds", (
   assert.equal(baselineScenarios.length, 3);
   assert.equal(summary.some((scenario) => scenario.id === "job-engine-stress"), true);
   assert.equal(summary.find((scenario) => scenario.id === "api-concurrency")?.threshold.maxP95Milliseconds, 900);
+});
+
+test("api contracts normalize versioned paths and validate core v1 request shapes", () => {
+  const searchQuery = searchQuerySchema.safeParse({
+    q: "leaf",
+    domain: "all",
+    page: "1",
+    pageSize: "10"
+  });
+  const localLogin = localLoginRequestSchema.safeParse({
+    username: "admin",
+    password: "ChangeMe!123"
+  });
+  const standardizedError = createStandardErrorResponse("invalid_body", "body failed validation");
+
+  assert.equal(createVersionedApiPath("/api/jobs"), "/api/v1/jobs");
+  assert.equal(createVersionedApiPath("/api/v1/jobs"), "/api/v1/jobs");
+  assert.equal(searchQuery.success, true);
+  assert.equal(localLogin.success, true);
+  assert.equal(standardizedError.meta.apiVersion, "v1");
+  assert.equal(standardizedError.error.code, "invalid_body");
 });
 
 test("backup scaffolds create archives, validate restores, and roll runtime state safely", () => {

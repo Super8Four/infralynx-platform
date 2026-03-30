@@ -4,6 +4,7 @@
     { "path": "./packages/config" },
     { "path": "./packages/core-domain" },
     { "path": "./packages/auth" },
+    { "path": "./packages/api-contracts" },
     { "path": "./packages/audit" },
     { "path": "./packages/backup" },
     { "path": "./packages/db-abstraction" },
