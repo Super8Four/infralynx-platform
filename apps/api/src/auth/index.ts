@@ -11,7 +11,6 @@ import {
   mapExternalIdentityToUser,
   normalizeProviderConfig,
   requirePermission,
-  resolveRequestAuthIdentity,
   validateProviderInput,
   type AuthIdentity,
   type AuthProviderType,
@@ -34,6 +33,11 @@ import {
   testSamlProvider
 } from "../../../../packages/auth-providers/saml/dist/index.js";
 import { appendAuditRecord } from "../audit/index.js";
+import {
+  invalidateAuthCache,
+  resolveCachedAuthIdentity,
+  sendCachedJsonResponse
+} from "../cache/index.js";
 import { buildPermissionSummary } from "../rbac/index.js";
 
 const authRootDirectory = resolve(process.cwd(), "runtime-data/auth");
@@ -102,8 +106,8 @@ function createHeaderIdentity(request: IncomingMessage): AuthIdentity | null {
 }
 
 async function createRequestIdentity(request: IncomingMessage): Promise<AuthIdentity | null> {
-  const bearerIdentity = await resolveRequestAuthIdentity({
-    authorizationHeader: typeof request.headers["authorization"] === "string" ? request.headers["authorization"] : undefined,
+  const bearerIdentity = await resolveCachedAuthIdentity({
+    request,
     repository: authRepository,
     masterKeyPath: authMasterKeyPath
   }).catch(() => null);
@@ -204,6 +208,7 @@ async function handleLocalLogin(request: IncomingMessage, response: ServerRespon
       }
     });
 
+    await invalidateAuthCache();
     sendJson(response, 200, mapSessionResponse(tokens));
   } catch (error) {
     authRepository.appendLog({
@@ -299,6 +304,7 @@ async function handleLdapLogin(request: IncomingMessage, response: ServerRespons
       }
     });
 
+    await invalidateAuthCache();
     sendJson(response, 200, mapSessionResponse(tokens));
   } catch (error) {
     authRepository.appendLog({
@@ -442,6 +448,7 @@ async function handleOidcCallback(request: IncomingMessage, response: ServerResp
       }
     });
 
+    await invalidateAuthCache();
     createRedirectResponse(response, buildLoginSuccessRedirect(transaction.redirectBaseUrl, tokens));
   } catch (error) {
     appendAuditRecord({
@@ -571,6 +578,7 @@ async function handleSamlCallback(request: IncomingMessage, response: ServerResp
       }
     });
 
+    await invalidateAuthCache();
     createRedirectResponse(response, buildLoginSuccessRedirect(transaction.redirectBaseUrl, tokens));
   } catch (error) {
     appendAuditRecord({
@@ -743,6 +751,7 @@ async function handleSaveProvider(
     }
   });
 
+  await invalidateAuthCache();
   sendJson(response, providerId ? 200 : 201, {
     provider: saved
   });
@@ -789,6 +798,7 @@ async function handleRefresh(request: IncomingMessage, response: ServerResponse)
       }
     });
 
+    await invalidateAuthCache();
     sendJson(response, 200, mapSessionResponse(tokens));
   } catch (error) {
     sendForbidden(response, error instanceof Error ? error.message : "refresh failed", 401);
@@ -803,10 +813,13 @@ async function handleSessionStatus(request: IncomingMessage, response: ServerRes
     return;
   }
 
-  sendJson(response, 200, {
+  await sendCachedJsonResponse(request, response, {
+    cacheKind: "authSession",
+    keyParts: ["status"]
+  }, async () => ({
     identity,
     rbac: buildPermissionSummary(identity)
-  });
+  }));
   appendAuditRecord({
     userId: identity.id,
     actorType: "user",
@@ -844,6 +857,7 @@ async function handleLogout(request: IncomingMessage, response: ServerResponse) 
     objectId: sessionId,
     metadata: {}
   });
+  await invalidateAuthCache();
   sendJson(response, 200, {
     sessionId,
     loggedOut: true
@@ -864,9 +878,12 @@ export async function handleAuthApiRequest(request: IncomingMessage, response: S
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/auth/providers/enabled") {
-    sendJson(response, 200, {
+    await sendCachedJsonResponse(request, response, {
+      cacheKind: "authEnabledProviders",
+      keyParts: ["enabled"]
+    }, async () => ({
       providers: authRepository.listEnabledProviders()
-    });
+    }));
     return true;
   }
 
@@ -922,9 +939,12 @@ export async function handleAuthApiRequest(request: IncomingMessage, response: S
       return true;
     }
 
-    sendJson(response, 200, {
+    await sendCachedJsonResponse(request, response, {
+      cacheKind: "authProviders",
+      keyParts: ["providers"]
+    }, async () => ({
       providers: authRepository.listProviders()
-    });
+    }));
     return true;
   }
 
@@ -962,9 +982,12 @@ export async function handleAuthApiRequest(request: IncomingMessage, response: S
         return true;
       }
 
-      sendJson(response, 200, {
+      await sendCachedJsonResponse(request, response, {
+        cacheKind: "authProviderDetail",
+        keyParts: ["provider", providerMatch[1]]
+      }, async () => ({
         provider
-      });
+      }));
       return true;
     }
 
@@ -1008,6 +1031,7 @@ export async function handleAuthApiRequest(request: IncomingMessage, response: S
         metadata: {}
       });
 
+      await invalidateAuthCache();
       sendJson(response, 200, {
         deletedId: providerMatch[1]
       });

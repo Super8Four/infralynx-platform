@@ -31,6 +31,11 @@ import {
   type ValidationWarning
 } from "../../../../packages/validation/dist/index.js";
 import { appendAuditFromRequest } from "../audit/index.js";
+import {
+  invalidateDerivedApiCache,
+  invalidateInventoryCache,
+  sendCachedJsonResponse
+} from "../cache/index.js";
 import { emitPlatformEvent } from "../webhooks/index.js";
 import { requireApiPermission } from "../rbac/index.js";
 
@@ -1700,6 +1705,8 @@ async function handleCreateWritableResource(
         actorId
       }
     });
+    await invalidateInventoryCache();
+    await invalidateDerivedApiCache();
   }
   createMutationResponse(
     response,
@@ -1794,6 +1801,8 @@ async function handleUpdateWritableResource(
         actorId
       }
     });
+    await invalidateInventoryCache();
+    await invalidateDerivedApiCache();
   }
   createMutationResponse(
     response,
@@ -1938,6 +1947,8 @@ function deleteWritableResource(
   emitInventoryEvent(resource, "deleted", actorId, recordId, {
     deletedId: recordId
   });
+  void invalidateInventoryCache();
+  void invalidateDerivedApiCache();
 }
 
 function isInventoryResource(value: string): value is InventoryResource {
@@ -2075,11 +2086,14 @@ export async function handleInventoryApiRequest(
       return true;
     }
 
-    sendJson(response, 200, {
+    await sendCachedJsonResponse(request, response, {
+      cacheKind: "inventoryNavigation",
+      keyParts: ["navigation"]
+    }, async () => ({
       generatedAt: new Date().toISOString(),
       sections: buildPhaseNavigationSummary(createInventoryContext()),
       actorId: identity.id
-    });
+    }));
     return true;
   }
 
@@ -2114,7 +2128,10 @@ export async function handleInventoryApiRequest(
         return true;
       }
 
-      sendJson(response, 200, detail);
+      await sendCachedJsonResponse(request, response, {
+        cacheKind: "inventoryDetail",
+        keyParts: [resource, recordId]
+      }, async () => detail as unknown as Record<string, unknown>);
       return true;
     }
 
@@ -2186,7 +2203,10 @@ export async function handleInventoryApiRequest(
         return true;
       }
 
-      sendJson(response, 200, getInventoryList(createInventoryContext(), resource, requestUrl));
+      await sendCachedJsonResponse(request, response, {
+        cacheKind: "inventoryList",
+        keyParts: [resource, requestUrl.searchParams.toString() || "default"]
+      }, async () => getInventoryList(createInventoryContext(), resource, requestUrl) as unknown as Record<string, unknown>);
       return true;
     }
 

@@ -2,6 +2,23 @@
 
 All notable changes to this repository will be documented in this file.
 
+## [v0.9.0-alpha]
+
+### Added
+- Centralized Redis-backed cache abstraction with mock-Redis fallback for local and test environments.
+- API cache helpers for scoped response caching, request-identity caching, and explicit invalidation by subsystem prefix.
+- Cache status endpoint and targeted caching across overview, search, inventory, auth, and RBAC read surfaces.
+
+### Changed
+- Updated the platform release baseline to `v0.9.0-alpha`.
+- Added write-path invalidation for inventory, auth-provider, session, and RBAC mutations so cached reads stay synchronized.
+
+### Fixed
+- Reduced repeated recomputation of hot API responses and repeated bearer-session resolution on admin and CRUD-heavy paths.
+
+### Removed
+- None.
+
 ## [v0.8.0-alpha]
 
 ### Added

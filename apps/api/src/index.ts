@@ -38,6 +38,7 @@ import {
 import { handleAuditApiRequest } from "./audit/index.js";
 import { handleAuthApiRequest } from "./auth/index.js";
 import { handleBackupApiRequest } from "./backup/index.js";
+import { getCacheStatus, sendCachedJsonResponse } from "./cache/index.js";
 import { handleExportApiRequest } from "./export/index.js";
 import { handleImportApiRequest } from "./import/index.js";
 import { handleInventoryApiRequest } from "./inventory/index.js";
@@ -1152,25 +1153,37 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/overview") {
-    sendJson(response, 200, createDomainResponse());
+    void sendCachedJsonResponse(request, response, {
+      cacheKind: "overview",
+      keyParts: ["overview"]
+    }, async () => createDomainResponse() as unknown as Record<string, unknown>);
 
     return;
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/racks/demo") {
-    sendJson(response, 200, createRackResponse());
+    void sendCachedJsonResponse(request, response, {
+      cacheKind: "rack",
+      keyParts: ["demo"]
+    }, async () => createRackResponse() as unknown as Record<string, unknown>);
 
     return;
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/topology/demo") {
-    sendJson(response, 200, createTopologyResponse());
+    void sendCachedJsonResponse(request, response, {
+      cacheKind: "topology",
+      keyParts: ["demo"]
+    }, async () => createTopologyResponse() as unknown as Record<string, unknown>);
 
     return;
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/ipam-tree/demo") {
-    sendJson(response, 200, createIpamTreeResponse());
+    void sendCachedJsonResponse(request, response, {
+      cacheKind: "ipamTree",
+      keyParts: ["demo"]
+    }, async () => createIpamTreeResponse() as unknown as Record<string, unknown>);
 
     return;
   }
@@ -1186,7 +1199,19 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
         ? rawDomain
         : "all";
 
-    sendJson(response, 200, createSearchResponse(requestUrl.searchParams.get("q") ?? "", domain));
+    void sendCachedJsonResponse(request, response, {
+      cacheKind: "search",
+      keyParts: [requestUrl.searchParams.get("q") ?? "", domain]
+    }, async () => createSearchResponse(requestUrl.searchParams.get("q") ?? "", domain) as unknown as Record<string, unknown>);
+
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/cache/status") {
+    sendJson(response, 200, {
+      generatedAt: new Date().toISOString(),
+      cache: getCacheStatus()
+    });
 
     return;
   }
