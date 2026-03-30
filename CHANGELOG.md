@@ -2,6 +2,92 @@
 
 All notable changes to this repository will be documented in this file.
 
+## [v0.8.0-alpha]
+
+### Added
+- Centralized backup package with compressed full and partial runtime-state backups plus restore preview and rollback-safe restore execution.
+- Backup API routes for backup creation, restore validation, restore execution, backup inspection, and backup scheduling integration.
+- Worker support for asynchronous `backup.create` jobs so scheduled or deferred backups run through the existing job engine.
+
+### Changed
+- Updated the platform release baseline to `v0.8.0-alpha`.
+- Extended RBAC with `backup:read`, `backup:write`, and `backup:restore` permissions for controlled data-safety operations.
+
+### Fixed
+- Closed the gap where InfraLynx had no centralized, validated recovery path for the current persisted platform state.
+
+### Removed
+- None.
+
+## [v0.7.0-alpha]
+
+### Added
+- Centralized validation package with IPAM overlap detection, prefix hierarchy checks, and DCIM relationship validation.
+- Validation API route for dry-run inventory mutation checks before writes or approval requests.
+- Workflow integration for change-control requests so approval candidates can be validated before entering review.
+
+### Changed
+- Updated the platform release baseline to `v0.7.0-alpha`.
+- Enforced conflict detection in the inventory write path so invalid overlaps and broken references are rejected before persistence.
+
+### Fixed
+- Closed the gap where structurally valid inventory payloads could still introduce overlapping prefixes, duplicate IPs, or broken cross-domain references.
+
+### Removed
+- None.
+
+## [v0.6.0-alpha]
+
+### Added
+- Approval workflow foundation with centralized request records, status transitions, assignee targeting, and approval APIs.
+- Workflow UI workspace for creating, reviewing, approving, and rejecting requests.
+- Job-engine integration so approved executable requests enqueue normal background jobs instead of introducing a second execution path.
+
+### Changed
+- Updated the platform release baseline to `v0.6.0-alpha`.
+- Extended RBAC with workflow read, write, and approve permissions so approval routing is enforced at the API layer.
+
+### Fixed
+- Closed the gap where high-impact queued actions could be requested without an explicit approval record.
+
+### Removed
+- None.
+
+## [v0.5.0-alpha]
+
+### Added
+- Centralized structured audit repository with append-only JSON records and query helpers.
+- Audit API endpoints for filtered audit reads.
+- System-wide audit hooks across authentication, inventory mutations, jobs, webhooks, and RBAC administration.
+
+### Changed
+- Updated the platform release baseline to `v0.5.0-alpha`.
+- Promoted job and webhook activity into the shared audit trail instead of leaving them in subsystem-local logs only.
+
+### Fixed
+- Closed the gap where major control-plane mutations were not represented in a centralized audit stream.
+
+### Removed
+- None.
+
+## [v0.4.0-alpha]
+
+### Added
+- Scoped RBAC contracts for permissions, role assignments, provider-role mappings, and scope-aware grant evaluation.
+- RBAC API endpoints for permission summaries, role assignments, and provider mappings.
+- Admin RBAC workspace in the web app for managing assignments and external-provider mappings.
+
+### Changed
+- Updated the platform release baseline to `v0.4.0-alpha`.
+- Extended auth session handling so provider logins can resolve external groups and claims into InfraLynx role assignments.
+- Applied API-side permission enforcement to the current inventory surface and UI-side route/action gating from session permissions.
+
+### Fixed
+- Replaced coarse role-only authorization checks with scope-aware permission decisions for the active CRUD surfaces.
+
+### Removed
+- None.
+
 ## [v0.3.0-alpha]
 
 ### Added

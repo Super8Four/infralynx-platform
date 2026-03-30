@@ -5,8 +5,21 @@ import { dirname } from "node:path";
 import { compareSync, hashSync } from "bcrypt";
 import { SignJWT, jwtVerify } from "jose";
 
-import type { RoleDefinition } from "../../core-domain/dist/index.js";
-import { defaultCoreRoles } from "../../core-domain/dist/index.js";
+import type {
+  ExternalRoleMappingInput,
+  PermissionGrant,
+  ProviderRoleMapping,
+  RoleAssignment,
+  RoleDefinition,
+  ScopedAccessContext
+} from "../../core-domain/dist/index.js";
+import {
+  createRoleAssignmentId,
+  defaultCoreRoles,
+  evaluateScopedAccess,
+  expandRoleAssignmentsToGrants,
+  resolveProviderRoleAssignments
+} from "../../core-domain/dist/index.js";
 
 export type AuthenticationMethod =
   | "local"
@@ -24,6 +37,8 @@ export interface AuthIdentity {
   readonly tenantId: string;
   readonly method: AuthenticationMethod;
   readonly roleIds: readonly string[];
+  readonly assignments?: readonly RoleAssignment[];
+  readonly grants?: readonly PermissionGrant[];
   readonly displayName?: string;
 }
 
@@ -37,6 +52,7 @@ export interface AuthSession {
 export interface AccessDecision {
   readonly allowed: boolean;
   readonly reason: string;
+  readonly grants?: readonly PermissionGrant[];
 }
 
 export interface AuthProviderSummary {
@@ -75,6 +91,10 @@ export interface AuthUserProviderMapping {
   readonly providerId: string;
   readonly externalId: string;
 }
+
+export type AuthUserRoleAssignment = RoleAssignment;
+
+export type AuthProviderRoleMapping = ProviderRoleMapping;
 
 export interface AuthSessionRecord {
   readonly id: string;
@@ -155,6 +175,8 @@ interface AuthRepositoryState {
   readonly providers: readonly AuthProviderRecord[];
   readonly users: readonly AuthUserRecord[];
   readonly mappings: readonly AuthUserProviderMapping[];
+  readonly roleAssignments: readonly AuthUserRoleAssignment[];
+  readonly providerRoleMappings: readonly AuthProviderRoleMapping[];
   readonly sessions: readonly AuthSessionRecord[];
   readonly transactions: readonly AuthTransactionRecord[];
   readonly logs: readonly AuthLogRecord[];
@@ -207,6 +229,22 @@ function createDefaultState(): AuthRepositoryState {
         externalId: "admin"
       }
     ],
+    roleAssignments: [
+      {
+        id: createRoleAssignmentId({
+          userId: "user-local-admin",
+          roleId: "core-platform-admin",
+          scopeType: "global",
+          scopeId: null
+        }),
+        userId: "user-local-admin",
+        roleId: "core-platform-admin",
+        scopeType: "global",
+        scopeId: null,
+        createdAt
+      }
+    ],
+    providerRoleMappings: [],
     sessions: [],
     transactions: [],
     logs: []
@@ -406,6 +444,40 @@ export class FileBackedAuthRepository {
     return record;
   }
 
+  listRoleAssignments(): readonly AuthUserRoleAssignment[] {
+    return this.#loadState().roleAssignments;
+  }
+
+  listRoleAssignmentsByUser(userId: string): readonly AuthUserRoleAssignment[] {
+    return this.#loadState().roleAssignments.filter((assignment) => assignment.userId === userId);
+  }
+
+  saveRoleAssignment(assignment: AuthUserRoleAssignment): AuthUserRoleAssignment {
+    const state = this.#loadState();
+    this.#persistState({
+      ...state,
+      roleAssignments: state.roleAssignments.filter((entry) => entry.id !== assignment.id).concat(assignment)
+    });
+
+    return assignment;
+  }
+
+  deleteRoleAssignment(assignmentId: string): boolean {
+    const state = this.#loadState();
+    const exists = state.roleAssignments.some((assignment) => assignment.id === assignmentId);
+
+    if (!exists) {
+      return false;
+    }
+
+    this.#persistState({
+      ...state,
+      roleAssignments: state.roleAssignments.filter((assignment) => assignment.id !== assignmentId)
+    });
+
+    return true;
+  }
+
   getMapping(providerId: string, externalId: string): AuthUserProviderMapping | null {
     return this.#loadState().mappings.find((mapping) => mapping.providerId === providerId && mapping.externalId === externalId) ?? null;
   }
@@ -420,6 +492,37 @@ export class FileBackedAuthRepository {
     });
 
     return mapping;
+  }
+
+  listProviderRoleMappings(providerId?: string): readonly AuthProviderRoleMapping[] {
+    const mappings = this.#loadState().providerRoleMappings;
+    return providerId ? mappings.filter((mapping) => mapping.providerId === providerId) : mappings;
+  }
+
+  saveProviderRoleMapping(mapping: AuthProviderRoleMapping): AuthProviderRoleMapping {
+    const state = this.#loadState();
+    this.#persistState({
+      ...state,
+      providerRoleMappings: state.providerRoleMappings.filter((entry) => entry.id !== mapping.id).concat(mapping)
+    });
+
+    return mapping;
+  }
+
+  deleteProviderRoleMapping(mappingId: string): boolean {
+    const state = this.#loadState();
+    const exists = state.providerRoleMappings.some((mapping) => mapping.id === mappingId);
+
+    if (!exists) {
+      return false;
+    }
+
+    this.#persistState({
+      ...state,
+      providerRoleMappings: state.providerRoleMappings.filter((mapping) => mapping.id !== mappingId)
+    });
+
+    return true;
   }
 
   createSessionRecord(identity: {
@@ -552,7 +655,17 @@ export class FileBackedAuthRepository {
     }
 
     try {
-      this.#loadedState = JSON.parse(readFileSync(this.#stateFilePath, "utf8")) as AuthRepositoryState;
+      const parsed = JSON.parse(readFileSync(this.#stateFilePath, "utf8")) as Partial<AuthRepositoryState>;
+      this.#loadedState = {
+        providers: parsed.providers ?? createDefaultState().providers,
+        users: parsed.users ?? createDefaultState().users,
+        mappings: parsed.mappings ?? createDefaultState().mappings,
+        roleAssignments: parsed.roleAssignments ?? createDefaultState().roleAssignments,
+        providerRoleMappings: parsed.providerRoleMappings ?? [],
+        sessions: parsed.sessions ?? [],
+        transactions: parsed.transactions ?? [],
+        logs: parsed.logs ?? []
+      };
     } catch {
       const initialState = createDefaultState();
       const localProvider = initialState.providers[0];
@@ -584,16 +697,41 @@ export interface AuthenticatedUserProfile {
   readonly externalId: string;
 }
 
-export function resolveAccessDecision(identity: AuthIdentity, roles: readonly RoleDefinition[], permissionId: string): AccessDecision {
-  const grantedPermissions = new Set(
-    roles.filter((role) => identity.roleIds.includes(role.id)).flatMap((role) => role.permissionIds)
-  );
+function createGlobalAssignmentsFromIdentity(identity: AuthIdentity): readonly AuthUserRoleAssignment[] {
+  return identity.roleIds.map((roleId) => ({
+    id: createRoleAssignmentId({
+      userId: identity.id,
+      roleId,
+      scopeType: "global",
+      scopeId: null
+    }),
+    userId: identity.id,
+    roleId,
+    scopeType: "global",
+    scopeId: null,
+    createdAt: new Date().toISOString()
+  }));
+}
 
-  if (grantedPermissions.has(permissionId)) {
-    return { allowed: true, reason: "permission granted by assigned role" };
-  }
+export function resolveAccessDecision(
+  identity: AuthIdentity,
+  roles: readonly RoleDefinition[],
+  permissionId: string,
+  context: ScopedAccessContext = {}
+): AccessDecision {
+  const assignments = identity.assignments ?? createGlobalAssignmentsFromIdentity(identity);
+  const grants = identity.grants ?? expandRoleAssignmentsToGrants(assignments, roles);
+  const decision = evaluateScopedAccess(grants, permissionId, {
+    tenantId: context.tenantId ?? identity.tenantId,
+    siteId: context.siteId ?? null,
+    deviceId: context.deviceId ?? null
+  });
 
-  return { allowed: false, reason: "permission not granted to assigned roles" };
+  return {
+    allowed: decision.allowed,
+    reason: decision.reason,
+    grants: decision.grants
+  };
 }
 
 export function createSession(identityId: string, issuedAt: string, ttlMinutes: number): AuthSession {
@@ -685,13 +823,22 @@ export async function verifySessionToken(
   return payload as Record<string, unknown>;
 }
 
-export function createAuthIdentityFromSession(session: AuthSessionRecord): AuthIdentity {
+export function createAuthIdentityFromSession(
+  session: AuthSessionRecord,
+  repository?: FileBackedAuthRepository
+): AuthIdentity {
+  const storedAssignments = repository?.listRoleAssignmentsByUser(session.userId) ?? [];
+  const assignments = storedAssignments.length > 0 ? storedAssignments : undefined;
+  const grants = assignments ? expandRoleAssignmentsToGrants(assignments, defaultCoreRoles) : undefined;
+
   return {
     id: session.userId,
     subject: session.subject,
     tenantId: session.tenantId,
     method: session.providerId === "provider-local" ? "local" : "api-token",
     roleIds: session.roleIds,
+    assignments,
+    grants,
     displayName: session.displayName
   };
 }
@@ -721,19 +868,20 @@ export async function resolveRequestAuthIdentity(input: {
     return null;
   }
 
-  return createAuthIdentityFromSession(session);
+  return createAuthIdentityFromSession(session, input.repository);
 }
 
 export function requirePermission(
   identity: AuthIdentity | null,
   permissionId: string,
-  roles: readonly RoleDefinition[] = defaultCoreRoles
+  roles: readonly RoleDefinition[] = defaultCoreRoles,
+  context: ScopedAccessContext = {}
 ): AccessDecision {
   if (!identity) {
     return { allowed: false, reason: "authentication is required" };
   }
 
-  return resolveAccessDecision(identity, roles, permissionId);
+  return resolveAccessDecision(identity, roles, permissionId, context);
 }
 
 export function validateProviderInput(type: AuthProviderType, config: Record<string, unknown>): readonly string[] {
@@ -829,6 +977,7 @@ export function mapExternalIdentityToUser(
     readonly displayName: string;
     readonly tenantId?: string;
     readonly roleIds?: readonly string[];
+    readonly externalRoles?: ExternalRoleMappingInput;
   }
 ): AuthenticatedUserProfile {
   const existingMapping = repository.getMapping(input.providerId, input.externalId);
@@ -859,8 +1008,32 @@ export function mapExternalIdentityToUser(
     externalId: input.externalId
   });
 
+  const mappedAssignments = resolveProviderRoleAssignments(
+    repository.listProviderRoleMappings(input.providerId),
+    input.providerId,
+    input.externalRoles ?? {},
+    user.id
+  );
+
+  for (const assignment of mappedAssignments) {
+    repository.saveRoleAssignment(assignment);
+  }
+
   return {
-    user,
+    user:
+      mappedAssignments.length > 0
+        ? repository.saveUser({
+            ...user,
+            roleIds: Array.from(
+              new Set(
+                repository
+                  .listRoleAssignmentsByUser(user.id)
+                  .map((assignment) => assignment.roleId)
+                  .concat(user.roleIds)
+              )
+            )
+          })
+        : user,
     provider,
     externalId: input.externalId
   };

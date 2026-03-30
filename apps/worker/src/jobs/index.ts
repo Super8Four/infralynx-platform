@@ -1,5 +1,9 @@
 import { resolve } from "node:path";
 
+import {
+  createAuditRecord,
+  createFileBackedAuditRepository
+} from "../../../../packages/audit/dist/index.js";
 import { workspaceMetadata } from "../../../../packages/config/dist/index.js";
 import {
   createFileBackedJobQueueStore,
@@ -15,6 +19,7 @@ import { jobHandlers } from "./handlers.js";
 
 const jobsStateFilePath = resolve(process.cwd(), "runtime-data/jobs/queue-state.json");
 const schedulerStateFilePath = resolve(process.cwd(), "runtime-data/scheduler/state.json");
+const auditStateFilePath = resolve(process.cwd(), "runtime-data/audit/state.json");
 
 export interface WorkerCycleResult {
   readonly handled: boolean;
@@ -24,6 +29,7 @@ export interface WorkerCycleResult {
 
 const queue = createFileBackedJobQueueStore(jobsStateFilePath);
 const schedulerStore = createFileBackedSchedulerStore(schedulerStateFilePath);
+const auditRepository = createFileBackedAuditRepository(auditStateFilePath);
 
 function delay(milliseconds: number) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
@@ -31,6 +37,31 @@ function delay(milliseconds: number) {
 
 export function describeWorkerRuntime(): string {
   return `${workspaceMetadata.name} worker boundary: ${platformBoundaries.worker}`;
+}
+
+function appendWorkerAudit(input: {
+  readonly jobId: string;
+  readonly createdBy: string | null;
+  readonly action: string;
+  readonly type: string;
+  readonly status: string;
+  readonly retryCount?: number;
+}) {
+  auditRepository.append(
+    createAuditRecord({
+      userId: input.createdBy,
+      actorType: "system",
+      tenantId: null,
+      action: input.action,
+      objectType: "job",
+      objectId: input.jobId,
+      metadata: {
+        type: input.type,
+        status: input.status,
+        retryCount: input.retryCount ?? 0
+      }
+    })
+  );
 }
 
 export function runSchedulerCycle(timestamp = new Date().toISOString()) {
@@ -70,8 +101,28 @@ export async function runWorkerCycle(): Promise<WorkerCycleResult> {
       if (!handler) {
         throw new Error(`no handler registered for ${job.type}`);
       }
-
-      return handler(job);
+      try {
+        const result = await handler(job);
+        appendWorkerAudit({
+          jobId: job.id,
+          createdBy: job.createdBy,
+          action: "job.executed",
+          type: job.type,
+          status: "success",
+          retryCount: job.retryCount
+        });
+        return result;
+      } catch (error) {
+        appendWorkerAudit({
+          jobId: job.id,
+          createdBy: job.createdBy,
+          action: "job.execution-failed",
+          type: job.type,
+          status: "failed",
+          retryCount: job.retryCount
+        });
+        throw error;
+      }
     }
   });
 
@@ -136,8 +187,28 @@ export async function startWorkerLoop(
       if (!handler) {
         throw new Error(`no handler registered for ${job.type}`);
       }
-
-      return handler(job);
+      try {
+        const result = await handler(job);
+        appendWorkerAudit({
+          jobId: job.id,
+          createdBy: job.createdBy,
+          action: "job.executed",
+          type: job.type,
+          status: "success",
+          retryCount: job.retryCount
+        });
+        return result;
+      } catch (error) {
+        appendWorkerAudit({
+          jobId: job.id,
+          createdBy: job.createdBy,
+          action: "job.execution-failed",
+          type: job.type,
+          status: "failed",
+          retryCount: job.retryCount
+        });
+        throw error;
+      }
     }
   });
   const schedulerRuntime = startSchedulerRuntime(schedulerStore, queue);

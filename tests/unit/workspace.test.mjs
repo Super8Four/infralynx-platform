@@ -1,21 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { workspaceMetadata } from "../../packages/config/dist/index.js";
 import {
+  createProviderRoleMappingId,
+  createRoleAssignmentId,
   createSearchQuery,
   createRoleIndex,
   createTenantDirectory,
   defaultCoreRoles,
   defaultTenantStatuses,
+  evaluateScopedAccess,
+  expandRoleAssignmentsToGrants,
   groupSearchResults,
+  resolveProviderRoleAssignments,
   searchRecords
 } from "../../packages/core-domain/dist/index.js";
 import { createSession, resolveAccessDecision } from "../../packages/auth/dist/index.js";
-import { createAuditRecord, summarizeAuditRecord } from "../../packages/audit/dist/index.js";
+import {
+  createAuditRecord,
+  createFileBackedAuditRepository,
+  summarizeAuditRecord
+} from "../../packages/audit/dist/index.js";
+import {
+  createFileBackedBackupStore,
+  executeBackupJobPayload,
+  resetFileBackedBackupStore
+} from "../../packages/backup/dist/index.js";
 import {
   canOccupyRackPosition,
   createRackDirectory,
@@ -103,6 +117,15 @@ import {
   validateCronExpression,
   validateScheduleInput
 } from "../../packages/scheduler/dist/index.js";
+import {
+  approveRequest,
+  canReviewApproval,
+  createApprovalRequest,
+  createFileBackedWorkflowRepository,
+  rejectRequest,
+  workflowSummary
+} from "../../packages/workflow-core/dist/index.js";
+import { validateInventorySnapshot } from "../../packages/validation/dist/index.js";
 import { formatBanner } from "../../packages/shared/dist/index.js";
 import { createTopologyView } from "../../packages/network-domain/dist/index.js";
 import {
@@ -207,6 +230,66 @@ test("auth scaffolds resolve access from assigned roles", () => {
   assert.match(session.expiresAt, /2026-03-26T00:30:00.000Z/);
 });
 
+test("scoped RBAC scaffolds evaluate tenant and site grants deterministically", () => {
+  const assignments = [
+    {
+      id: createRoleAssignmentId({
+        userId: "user-1",
+        roleId: "core-tenant-operator",
+        scopeType: "tenant",
+        scopeId: "tenant-ops"
+      }),
+      userId: "user-1",
+      roleId: "core-tenant-operator",
+      scopeType: "tenant",
+      scopeId: "tenant-ops",
+      createdAt: "2026-03-27T00:00:00.000Z"
+    }
+  ];
+  const grants = expandRoleAssignmentsToGrants(assignments, defaultCoreRoles);
+  const allowed = evaluateScopedAccess(grants, "site:write", { tenantId: "tenant-ops" });
+  const denied = evaluateScopedAccess(grants, "site:write", { tenantId: "tenant-net" });
+
+  assert.equal(allowed.allowed, true);
+  assert.equal(denied.allowed, false);
+});
+
+test("provider role mappings resolve external groups and claims into assignments", () => {
+  const mappings = [
+    {
+      id: createProviderRoleMappingId({
+        providerId: "provider-ldap",
+        claimType: "ldap-group",
+        claimKey: "groups",
+        claimValue: "CN=NetworkOps,OU=Groups,DC=example,DC=com",
+        roleId: "core-tenant-operator",
+        scopeType: "tenant",
+        scopeId: "tenant-net"
+      }),
+      providerId: "provider-ldap",
+      claimType: "ldap-group",
+      claimKey: "groups",
+      claimValue: "CN=NetworkOps,OU=Groups,DC=example,DC=com",
+      roleId: "core-tenant-operator",
+      scopeType: "tenant",
+      scopeId: "tenant-net",
+      createdAt: "2026-03-27T00:00:00.000Z"
+    }
+  ];
+  const assignments = resolveProviderRoleAssignments(
+    mappings,
+    "provider-ldap",
+    {
+      groups: ["CN=NetworkOps,OU=Groups,DC=example,DC=com"]
+    },
+    "user-network-operator",
+    "2026-03-27T00:00:00.000Z"
+  );
+
+  assert.equal(assignments.length, 1);
+  assert.equal(assignments[0]?.scopeId, "tenant-net");
+});
+
 test("auth core persists providers, sessions, and encrypted config", async () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-auth-"));
   const statePath = join(tempRoot, "auth.json");
@@ -277,11 +360,157 @@ test("audit scaffolds create append-only summaries", () => {
     metadata: { method: "password" }
   });
 
-  assert.equal(record.id, "authentication:session.created:2026-03-26T00:00:00.000Z");
+  assert.equal(record.id, "audit-authentication:session.created:2026-03-26T00:00:00.000Z");
   assert.equal(
     summarizeAuditRecord(record),
-    "2026-03-26T00:00:00.000Z authentication:session.created by user"
+    "2026-03-26T00:00:00.000Z authentication.session.created authentication:session-1 by user"
   );
+});
+
+test("audit repository scaffolds persist and query structured records", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-audit-"));
+  const statePath = join(tempRoot, "audit.json");
+
+  try {
+    const repository = createFileBackedAuditRepository(statePath);
+    repository.append(
+      createAuditRecord({
+        userId: "user-1",
+        actorType: "user",
+        tenantId: "tenant-ops",
+        action: "inventory.record.created",
+        objectType: "device",
+        objectId: "device-1",
+        metadata: { siteId: "site-dal1" },
+        timestamp: "2026-03-30T10:00:00.000Z"
+      })
+    );
+    repository.append(
+      createAuditRecord({
+        userId: "user-2",
+        actorType: "user",
+        tenantId: "tenant-net",
+        action: "job.created",
+        objectType: "job",
+        objectId: "job-1",
+        metadata: {},
+        timestamp: "2026-03-30T11:00:00.000Z"
+      })
+    );
+
+    const tenantRecords = repository.query({ tenantId: "tenant-ops" });
+    const deviceRecords = repository.query({ objectType: "device" });
+
+    assert.equal(tenantRecords.length, 1);
+    assert.equal(tenantRecords[0]?.objectId, "device-1");
+    assert.equal(deviceRecords.length, 1);
+    assert.equal(repository.listRecent(1)[0]?.action, "job.created");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("backup scaffolds create archives, validate restores, and roll runtime state safely", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-backup-"));
+  const runtimeRoot = join(tempRoot, "runtime-data");
+  const backupRoot = join(runtimeRoot, "backups");
+  const statePath = join(backupRoot, "state.json");
+  const archiveDirectory = join(backupRoot, "archives");
+
+  try {
+    mkdirSync(join(runtimeRoot, "inventory"), { recursive: true });
+    writeFileSync(
+      join(runtimeRoot, "inventory", "state.json"),
+      JSON.stringify(
+        {
+          sites: [{ id: "site-dal1", tenantId: "tenant-ops" }],
+          racks: [{ id: "rack-a1", siteId: "site-dal1", totalUnits: 42 }],
+          devices: [],
+          prefixes: [],
+          ipAddresses: []
+        },
+        null,
+        2
+      )
+    );
+
+    const store = createFileBackedBackupStore({
+      stateFilePath: statePath,
+      archiveDirectory,
+      sourceRoot: runtimeRoot
+    });
+    const created = store.createBackup({
+      mode: "partial",
+      sections: ["inventory"],
+      engine: "bootstrap-file-store",
+      label: "inventory-snapshot",
+      createdBy: "user-1",
+      tenantId: "tenant-ops",
+      createdAt: "2026-03-30T12:00:00.000Z"
+    });
+
+    writeFileSync(
+      join(runtimeRoot, "inventory", "state.json"),
+      JSON.stringify(
+        {
+          sites: [{ id: "site-overwritten", tenantId: "tenant-ops" }],
+          racks: [],
+          devices: [],
+          prefixes: [],
+          ipAddresses: []
+        },
+        null,
+        2
+      )
+    );
+
+    const preview = store.validateRestore(created.record.id);
+    const restored = store.restoreBackup(created.record.id);
+    const restoredState = JSON.parse(readFileSync(join(runtimeRoot, "inventory", "state.json"), "utf8"));
+
+    assert.equal(created.record.sections[0], "inventory");
+    assert.equal(preview.valid, true);
+    assert.equal(restored.restored, true);
+    assert.equal(restoredState.sites[0]?.id, "site-dal1");
+  } finally {
+    resetFileBackedBackupStore(statePath, archiveDirectory);
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("backup job payload scaffolds create scheduled backup artifacts", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-backup-job-"));
+  const runtimeRoot = join(tempRoot, "runtime-data");
+  const backupRoot = join(runtimeRoot, "backups");
+  const statePath = join(backupRoot, "state.json");
+  const archiveDirectory = join(backupRoot, "archives");
+
+  try {
+    mkdirSync(join(runtimeRoot, "audit"), { recursive: true });
+    writeFileSync(join(runtimeRoot, "audit", "state.json"), JSON.stringify({ records: [] }, null, 2));
+
+    const result = executeBackupJobPayload(
+      {
+        stateFilePath: statePath,
+        archiveDirectory,
+        sourceRoot: runtimeRoot
+      },
+      {
+        mode: "partial",
+        sections: ["audit"],
+        label: "audit-backup",
+        createdBy: "scheduler:schedule-1",
+        tenantId: "tenant-ops"
+      }
+    );
+
+    assert.equal(typeof result.backupId, "string");
+    assert.equal(result.sections[0], "audit");
+    assert.equal(existsSync(result.archivePath), true);
+  } finally {
+    resetFileBackedBackupStore(statePath, archiveDirectory);
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("ipam scaffolds validate basic VRF, prefix, IP, and VLAN rules", () => {
@@ -450,11 +679,13 @@ test("ui scaffolds expose navigation and workspace panels", () => {
 test("navigation scaffolds keep hierarchy and domain mapping explicit", () => {
   const groups = getNavigationGroups();
   const devices = getNavigationRoute("devices");
+  const rbac = getNavigationRoute("rbac");
   const breadcrumbs = getNavigationBreadcrumbs("prefixes");
 
   assert.equal(groups.some((group) => group.id === "dcim"), true);
   assert.equal(devices.group, "dcim");
   assert.equal(devices.writable, true);
+  assert.equal(rbac.group, "admin");
   assert.equal(breadcrumbs[0]?.label, "IPAM");
   assert.equal(breadcrumbs[1]?.label, "Prefixes");
 });
@@ -960,4 +1191,137 @@ test("scheduler scaffolds persist schedules and enqueue due jobs across restarts
     resetFileBackedJobQueueStore(jobQueueStatePath);
     rmSync(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("workflow scaffolds create, review, and persist approval requests", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "infralynx-workflows-"));
+  const statePath = join(tempRoot, "workflows.json");
+
+  try {
+    const repository = createFileBackedWorkflowRepository(statePath);
+    const request = repository.saveRequest(
+      createApprovalRequest({
+        type: "job-execution",
+        title: "Approve inventory reconciliation",
+        payload: { changeId: "chg-100" },
+        requestedBy: "user-requester",
+        tenantId: "tenant-ops",
+        assignedTo: {
+          roleIds: ["core-platform-admin"],
+          userIds: []
+        },
+        execution: {
+          jobType: "core.echo",
+          payload: { message: "run after approval" }
+        }
+      })
+    );
+    const review = canReviewApproval(request, {
+      userId: "user-approver",
+      roleIds: ["core-platform-admin"],
+      tenantId: "tenant-ops"
+    });
+    const approved = repository.saveRequest(
+      approveRequest(request, "user-approver", "job-123", "approved for execution")
+    );
+    const rejected = rejectRequest(
+      createApprovalRequest({
+        type: "change-control",
+        title: "Reject risky rack move",
+        payload: { rackId: "rack-a1" },
+        requestedBy: "user-requester",
+        tenantId: "tenant-ops",
+        assignedTo: {
+          userIds: ["user-approver"],
+          roleIds: []
+        }
+      }),
+      "user-approver",
+      "insufficient validation"
+    );
+    repository.saveRequest(rejected);
+    const persisted = repository.getRequestById(approved.id);
+    const summary = workflowSummary(repository.listRequests());
+
+    assert.equal(review.allowed, true);
+    assert.equal(approved.execution?.triggeredJobId, "job-123");
+    assert.equal(persisted?.status, "approved");
+    assert.equal(summary.total, 2);
+    assert.equal(summary.approved, 1);
+    assert.equal(summary.rejected, 1);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("validation engine detects IPAM overlaps and broken DCIM relationships", () => {
+  const result = validateInventorySnapshot({
+    tenants: [{ id: "tenant-ops" }],
+    vrfs: [{ id: "vrf-global", tenantId: "tenant-ops" }],
+    sites: [{ id: "site-dal1", tenantId: "tenant-ops" }],
+    racks: [{ id: "rack-a1", siteId: "site-dal1", totalUnits: 42 }],
+    devices: [
+      {
+        id: "device-1",
+        siteId: "site-dal1",
+        rackPosition: {
+          rackId: "rack-a1",
+          face: "front",
+          startingUnit: 10,
+          heightUnits: 2
+        }
+      }
+    ],
+    interfaces: [{ id: "iface-device-1", deviceId: "device-1" }],
+    connections: [
+      {
+        id: "conn-bad",
+        fromDeviceId: "device-1",
+        fromInterfaceId: "iface-device-1",
+        toDeviceId: "device-2",
+        toInterfaceId: "iface-missing"
+      }
+    ],
+    prefixes: [
+      {
+        id: "prefix-root",
+        vrfId: "vrf-global",
+        parentPrefixId: null,
+        cidr: "10.40.0.0/16",
+        family: 4,
+        tenantId: "tenant-ops"
+      },
+      {
+        id: "prefix-overlap",
+        vrfId: "vrf-global",
+        parentPrefixId: null,
+        cidr: "10.40.0.0/24",
+        family: 4,
+        tenantId: "tenant-ops"
+      }
+    ],
+    ipAddresses: [
+      {
+        id: "ip-1",
+        vrfId: "vrf-global",
+        address: "10.40.0.10/24",
+        family: 4,
+        prefixId: "prefix-root",
+        interfaceId: "iface-device-1"
+      },
+      {
+        id: "ip-2",
+        vrfId: "vrf-global",
+        address: "10.40.0.10/24",
+        family: 4,
+        prefixId: "prefix-root",
+        interfaceId: "iface-device-1"
+      }
+    ]
+  });
+
+  assert.equal(result.valid, false);
+  assert.equal(result.conflicts.some((conflict) => conflict.code === "prefix_undeclared_containment"), true);
+  assert.equal(result.conflicts.some((conflict) => conflict.code === "ip_overlap"), true);
+  assert.equal(result.conflicts.some((conflict) => conflict.code === "connection_missing_to_device"), true);
 });

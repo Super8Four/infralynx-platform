@@ -12,6 +12,7 @@ import { ContextNavigation } from "./components/layout/navigation/ContextNavigat
 import { SidebarNavigation } from "./components/layout/navigation/SidebarNavigation";
 import { AppShell } from "./layout/AppShell";
 import { AuthProvidersPage } from "./pages/admin/auth/AuthProvidersPage";
+import { RbacPage } from "./pages/admin/rbac/RbacPage";
 import { fetchInventoryNavigation, type InventoryNavigationResponse } from "./services/inventory";
 import { LoginPage } from "./components/auth/LoginPage";
 import { DevicesPage } from "./pages/dcim/DevicesPage";
@@ -25,8 +26,10 @@ import { VrfsPage } from "./pages/ipam/VrfsPage";
 import { ConnectionsPage } from "./pages/network/ConnectionsPage";
 import { InterfacesPage } from "./pages/network/InterfacesPage";
 import { JobsPage } from "./pages/operations/JobsPage";
+import { WorkflowsPage } from "./pages/workflows/WorkflowsPage";
 import {
   fetchCurrentAuthSession,
+  type AuthRbacSummaryResponse,
   readLoginResultFromHash
 } from "./services/auth";
 
@@ -35,6 +38,25 @@ interface AppRoute {
   readonly mode: "list" | "new" | "detail" | "edit";
   readonly recordId: string | null;
   readonly errorMessage: string | null;
+}
+
+function getRouteWritePermission(routeId: NavigationRouteId) {
+  switch (routeId) {
+    case "sites":
+      return "site:write";
+    case "racks":
+      return "rack:write";
+    case "devices":
+      return "device:write";
+    case "prefixes":
+      return "prefix:write";
+    case "ip-addresses":
+      return "ip-address:write";
+    case "workflows":
+      return "workflow:write";
+    default:
+      return null;
+  }
 }
 
 function parseRoute(hash: string): AppRoute {
@@ -72,7 +94,9 @@ function parseRoute(hash: string): AppRoute {
     "interfaces",
     "connections",
     "jobs",
-    "auth-providers"
+    "workflows",
+    "auth-providers",
+    "rbac"
   ];
 
   if (!validRouteIds.includes(routeId)) {
@@ -94,24 +118,42 @@ function parseRoute(hash: string): AppRoute {
   return { routeId, mode: "list", recordId: null, errorMessage: null };
 }
 
-function getTopbarActions(route: AppRoute) {
+function getTopbarActions(route: AppRoute, permissions: readonly string[]) {
+  if (route.routeId === "login") {
+    return [];
+  }
+
   if (
     (route.routeId === "sites" ||
       route.routeId === "racks" ||
       route.routeId === "devices" ||
       route.routeId === "prefixes" ||
-      route.routeId === "ip-addresses") &&
-    route.mode === "list"
+      route.routeId === "ip-addresses" ||
+      route.routeId === "workflows") &&
+    route.mode === "list" &&
+    Boolean(getRouteWritePermission(route.routeId) && permissions.includes(getRouteWritePermission(route.routeId) as string))
   ) {
-    return [{ label: `Create ${getNavigationRoute(route.routeId).shortLabel}`, href: `#/${route.routeId}/new` }];
+    return [{
+      label: route.routeId === "workflows" ? "Create Approval" : `Create ${getNavigationRoute(route.routeId).shortLabel}`,
+      href: `#/${route.routeId}/new`
+    }];
   }
 
-  if (route.mode === "detail" && route.recordId) {
+  if (
+    route.mode === "detail" &&
+    route.recordId &&
+    route.routeId !== "workflows" &&
+    Boolean(getRouteWritePermission(route.routeId) && permissions.includes(getRouteWritePermission(route.routeId) as string))
+  ) {
     return [{ label: "Edit", href: `#/${route.routeId}/${route.recordId}/edit` }];
   }
 
-  if (route.routeId === "auth-providers" && route.mode === "list") {
+  if (route.routeId === "auth-providers" && route.mode === "list" && permissions.includes("auth:write")) {
     return [{ label: "Add Provider", href: "#/auth-providers/new" }];
+  }
+
+  if (route.routeId === "rbac" && route.mode === "list" && permissions.includes("rbac:write")) {
+    return [{ label: "Refresh RBAC", href: "#/rbac" }];
   }
 
   if (route.mode === "new" || route.mode === "edit") {
@@ -149,14 +191,19 @@ function renderPage(route: AppRoute) {
       return <ConnectionsPage />;
     case "jobs":
       return <JobsPage />;
+    case "workflows":
+      return <WorkflowsPage mode={route.mode} recordId={route.recordId} />;
     case "auth-providers":
       return <AuthProvidersPage mode={route.mode} recordId={route.recordId} />;
+    case "rbac":
+      return <RbacPage />;
   }
 }
 
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.hash));
   const [navigationSummary, setNavigationSummary] = useState<InventoryNavigationResponse | null>(null);
+  const [authSession, setAuthSession] = useState<AuthRbacSummaryResponse | null>(null);
 
   useEffect(() => {
     function handleHashChange() {
@@ -172,7 +219,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    void fetchCurrentAuthSession().catch(() => undefined);
+    void fetchCurrentAuthSession()
+      .then((response) => setAuthSession(response.rbac))
+      .catch(() => setAuthSession(null));
   }, []);
 
   if (route.routeId === "login") {
@@ -181,13 +230,31 @@ export function App() {
 
   const activeRoute = getNavigationRoute(route.routeId as NavigationRouteId);
   const breadcrumbs = getNavigationBreadcrumbs(route.routeId as NavigationRouteId);
-  const groups = getNavigationGroups();
+  const permissions = authSession?.permissions ?? ["tenant:read"];
+  const groups = getNavigationGroups().map((group) => ({
+    ...group,
+    routes: group.routes.filter((candidateRoute) => {
+      if (candidateRoute.id === "auth-providers") {
+        return permissions.includes("auth:read");
+      }
+
+      if (candidateRoute.id === "rbac") {
+        return permissions.includes("rbac:read");
+      }
+
+      if (candidateRoute.id === "workflows") {
+        return permissions.includes("workflow:read");
+      }
+
+      return true;
+    })
+  }));
   const countsByRoute = Object.fromEntries(
     Object.values(navigationSummary?.sections ?? {})
       .flat()
       .map((entry) => [entry.id, entry.count])
   );
-  const topbarActions = getTopbarActions(route);
+  const topbarActions = getTopbarActions(route, permissions);
 
   return (
     <AppShell

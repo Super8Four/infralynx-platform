@@ -12,7 +12,9 @@ export type NavigationRouteId =
   | "interfaces"
   | "connections"
   | "jobs"
-  | "auth-providers";
+  | "workflows"
+  | "auth-providers"
+  | "rbac";
 
 export interface NavigationAction {
   readonly id: string;
@@ -200,6 +202,21 @@ export const navigationRoutes: readonly NavigationRoute[] = [
     contextLinks: [{ id: "jobs-list", label: "Job queue", href: "#/jobs" }]
   },
   {
+    id: "workflows",
+    label: "Workflows",
+    shortLabel: "Workflows",
+    group: "operations",
+    accent: "var(--ui-accent-signal)",
+    summary: "Approval requests and controlled execution gates.",
+    hierarchy: ["Operations", "Workflows"],
+    writable: true,
+    actions: [{ id: "workflow-create", label: "Create approval", href: "#/workflows/new" }],
+    contextLinks: [
+      { id: "workflow-list", label: "Approval queue", href: "#/workflows" },
+      { id: "jobs-list", label: "Job queue", href: "#/jobs" }
+    ]
+  },
+  {
     id: "auth-providers",
     label: "Authentication",
     shortLabel: "Authentication",
@@ -212,6 +229,21 @@ export const navigationRoutes: readonly NavigationRoute[] = [
     contextLinks: [
       { id: "auth-provider-list", label: "Provider list", href: "#/auth-providers" },
       { id: "auth-login", label: "Login screen", href: "#/login" }
+    ]
+  },
+  {
+    id: "rbac",
+    label: "RBAC",
+    shortLabel: "RBAC",
+    group: "admin",
+    accent: "var(--ui-accent-cool)",
+    summary: "Roles, scoped assignments, and provider-to-role mappings.",
+    hierarchy: ["Admin", "RBAC"],
+    writable: true,
+    actions: [{ id: "rbac-open", label: "Manage RBAC", href: "#/rbac" }],
+    contextLinks: [
+      { id: "rbac-home", label: "RBAC workspace", href: "#/rbac" },
+      { id: "auth-provider-list", label: "Provider list", href: "#/auth-providers" }
     ]
   }
 ] as const;

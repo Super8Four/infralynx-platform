@@ -1,5 +1,10 @@
 import { resolve } from "node:path";
 
+import {
+  createAuditRecord,
+  createFileBackedAuditRepository
+} from "../../../../packages/audit/dist/index.js";
+import { executeBackupJobPayload } from "../../../../packages/backup/dist/index.js";
 import type { JobRecord } from "../../../../packages/job-core/dist/index.js";
 import { executeImportJobPayload } from "../../../../packages/data-transfer/dist/index.js";
 import { createFileBackedEventRepository } from "../../../../packages/event-core/dist/index.js";
@@ -13,6 +18,7 @@ export type JobHandler = (job: JobRecord) => Promise<Record<string, unknown>>;
 
 const eventRepository = createFileBackedEventRepository(resolve(process.cwd(), "runtime-data/events/events.json"));
 const webhookRepository = createFileBackedWebhookRepository(resolve(process.cwd(), "runtime-data/webhooks/state.json"));
+const auditRepository = createFileBackedAuditRepository(resolve(process.cwd(), "runtime-data/audit/state.json"));
 
 export const jobHandlers: Readonly<Record<string, JobHandler>> = {
   "core.echo": async (job) => ({
@@ -34,6 +40,18 @@ export const jobHandlers: Readonly<Record<string, JobHandler>> = {
       recoveredAtAttempt: currentAttempt
     };
   },
+  "backup.create": async (job) =>
+    executeBackupJobPayload(
+      {
+        stateFilePath: resolve(process.cwd(), "runtime-data/backups/state.json"),
+        archiveDirectory: resolve(process.cwd(), "runtime-data/backups/archives"),
+        sourceRoot: resolve(process.cwd(), "runtime-data")
+      },
+      {
+        ...job.payload,
+        createdBy: job.createdBy
+      }
+    ),
   "data-transfer.import": async (job) => executeImportJobPayload(job.payload),
   "webhook.deliver": async (job) => {
     const eventId = typeof job.payload["eventId"] === "string" ? job.payload["eventId"] : null;
@@ -61,6 +79,21 @@ export const jobHandlers: Readonly<Record<string, JobHandler>> = {
       });
 
       webhookRepository.saveDelivery(delivery);
+      auditRepository.append(
+        createAuditRecord({
+          userId: typeof job.createdBy === "string" ? job.createdBy : null,
+          actorType: "system",
+          tenantId: null,
+          action: "webhook.delivered",
+          objectType: "webhook",
+          objectId: webhookId,
+          metadata: {
+            eventId,
+            deliveryId: delivery.id,
+            responseStatus: delivery.responseStatus
+          }
+        })
+      );
 
       return {
         deliveryId: delivery.id,
@@ -76,6 +109,20 @@ export const jobHandlers: Readonly<Record<string, JobHandler>> = {
           status: "failed",
           responseStatus: null,
           errorMessage: error instanceof Error ? error.message : "unknown webhook delivery error"
+        })
+      );
+      auditRepository.append(
+        createAuditRecord({
+          userId: typeof job.createdBy === "string" ? job.createdBy : null,
+          actorType: "system",
+          tenantId: null,
+          action: "webhook.delivery-failed",
+          objectType: "webhook",
+          objectId: webhookId,
+          metadata: {
+            eventId,
+            reason: error instanceof Error ? error.message : "unknown webhook delivery error"
+          }
         })
       );
 
