@@ -30,6 +30,12 @@ import {
   type ValidationConflict,
   type ValidationWarning
 } from "../../../../packages/validation/dist/index.js";
+import {
+  createPaginationRequest,
+  normalizeQueryText,
+  paginateRecords as paginateQueryRecords,
+  sortRecordsByField
+} from "../../../../packages/db-performance/dist/index.js";
 import { appendAuditFromRequest } from "../audit/index.js";
 import {
   invalidateDerivedApiCache,
@@ -105,6 +111,15 @@ interface ApiListResponse<TRecord> {
   readonly page: number;
   readonly pageSize: number;
   readonly total: number;
+  readonly pagination: {
+    readonly page: number;
+    readonly pageSize: number;
+    readonly offset: number;
+    readonly total: number;
+    readonly totalPages: number;
+    readonly hasNextPage: boolean;
+    readonly hasPreviousPage: boolean;
+  };
   readonly sort: {
     readonly field: string;
     readonly direction: "asc" | "desc";
@@ -727,48 +742,6 @@ function asInteger(value: unknown): number | null {
   return null;
 }
 
-function compareValues(left: unknown, right: unknown): number {
-  if (typeof left === "number" && typeof right === "number") {
-    return left - right;
-  }
-
-  return String(left ?? "").localeCompare(String(right ?? ""));
-}
-
-function sortRecords<TRecord>(
-  records: readonly TRecord[],
-  field: string,
-  direction: "asc" | "desc"
-): readonly TRecord[] {
-  return [...records].sort((left, right) => {
-    const leftRecord = left as Record<string, unknown>;
-    const rightRecord = right as Record<string, unknown>;
-    const comparison = compareValues(leftRecord[field], rightRecord[field]);
-    return direction === "asc" ? comparison : -comparison;
-  });
-}
-
-function paginateRecords<TRecord>(
-  records: readonly TRecord[],
-  page: number,
-  pageSize: number
-): readonly TRecord[] {
-  const offset = (page - 1) * pageSize;
-  return records.slice(offset, offset + pageSize);
-}
-
-function toPageRequest(requestUrl: URL) {
-  const page = Math.max(1, Number(requestUrl.searchParams.get("page") ?? "1"));
-  const pageSize = Math.min(100, Math.max(1, Number(requestUrl.searchParams.get("pageSize") ?? "25")));
-  const direction = requestUrl.searchParams.get("direction") === "desc" ? "desc" : "asc";
-
-  return {
-    page,
-    pageSize,
-    direction
-  } as const;
-}
-
 function buildSiteDetail(context: InventoryContext, site: Site): ApiDetailResponse<Site> {
   const racks = context.state.racks.filter((rack) => rack.siteId === site.id);
   const devices = context.state.devices.filter((device) => device.siteId === site.id);
@@ -867,10 +840,11 @@ function buildIpAddressDetail(
 }
 
 function listSites(context: InventoryContext, requestUrl: URL): ApiListResponse<Site> {
-  const query = (requestUrl.searchParams.get("query") ?? "").trim().toLowerCase();
+  const query = normalizeQueryText(requestUrl.searchParams.get("query"));
   const tenantId = requestUrl.searchParams.get("tenantId") ?? "";
   const sortField = requestUrl.searchParams.get("sort") ?? "name";
-  const { page, pageSize, direction } = toPageRequest(requestUrl);
+  const pageRequest = createPaginationRequest(requestUrl.searchParams);
+  const direction = requestUrl.searchParams.get("direction") === "desc" ? "desc" : "asc";
   const filtered = context.state.sites.filter((site) => {
     if (tenantId && site.tenantId !== tenantId) {
       return false;
@@ -881,24 +855,27 @@ function listSites(context: InventoryContext, requestUrl: URL): ApiListResponse<
 
     return [site.name, site.slug, site.id].some((value) => value.toLowerCase().includes(query));
   });
-  const sorted = sortRecords(filtered, sortField, direction);
+  const sorted = sortRecordsByField(filtered, sortField, direction);
+  const paginated = paginateQueryRecords(sorted, pageRequest);
 
   return {
     resource: "sites",
-    page,
-    pageSize,
-    total: sorted.length,
+    page: paginated.pagination.page,
+    pageSize: paginated.pagination.pageSize,
+    total: paginated.pagination.total,
+    pagination: paginated.pagination,
     sort: { field: sortField, direction },
     filters: tenantId ? { tenantId, query } : { query },
-    items: paginateRecords(sorted, page, pageSize)
+    items: paginated.items
   };
 }
 
 function listRacks(context: InventoryContext, requestUrl: URL): ApiListResponse<Record<string, unknown>> {
-  const query = (requestUrl.searchParams.get("query") ?? "").trim().toLowerCase();
+  const query = normalizeQueryText(requestUrl.searchParams.get("query"));
   const siteId = requestUrl.searchParams.get("siteId") ?? "";
   const sortField = requestUrl.searchParams.get("sort") ?? "name";
-  const { page, pageSize, direction } = toPageRequest(requestUrl);
+  const pageRequest = createPaginationRequest(requestUrl.searchParams);
+  const direction = requestUrl.searchParams.get("direction") === "desc" ? "desc" : "asc";
   const filtered = context.state.racks
     .map((rack) => ({
       ...rack,
@@ -917,26 +894,29 @@ function listRacks(context: InventoryContext, requestUrl: URL): ApiListResponse<
         value.toLowerCase().includes(query)
       );
     });
-  const sorted = sortRecords(filtered, sortField, direction);
+  const sorted = sortRecordsByField(filtered, sortField, direction);
+  const paginated = paginateQueryRecords(sorted, pageRequest);
 
   return {
     resource: "racks",
-    page,
-    pageSize,
-    total: sorted.length,
+    page: paginated.pagination.page,
+    pageSize: paginated.pagination.pageSize,
+    total: paginated.pagination.total,
+    pagination: paginated.pagination,
     sort: { field: sortField, direction },
     filters: siteId ? { siteId, query } : { query },
-    items: paginateRecords(sorted, page, pageSize)
+    items: paginated.items
   };
 }
 
 function listDevices(context: InventoryContext, requestUrl: URL): ApiListResponse<Record<string, unknown>> {
-  const query = (requestUrl.searchParams.get("query") ?? "").trim().toLowerCase();
+  const query = normalizeQueryText(requestUrl.searchParams.get("query"));
   const siteId = requestUrl.searchParams.get("siteId") ?? "";
   const role = requestUrl.searchParams.get("role") ?? "";
   const status = requestUrl.searchParams.get("status") ?? "";
   const sortField = requestUrl.searchParams.get("sort") ?? "name";
-  const { page, pageSize, direction } = toPageRequest(requestUrl);
+  const pageRequest = createPaginationRequest(requestUrl.searchParams);
+  const direction = requestUrl.searchParams.get("direction") === "desc" ? "desc" : "asc";
   const filtered = context.state.devices
     .map((device) => {
       const interfaces = context.interfaces.filter((entry) => entry.deviceId === device.id);
@@ -971,25 +951,28 @@ function listDevices(context: InventoryContext, requestUrl: URL): ApiListRespons
         String(value).toLowerCase().includes(query)
       );
     });
-  const sorted = sortRecords(filtered, sortField, direction);
+  const sorted = sortRecordsByField(filtered, sortField, direction);
+  const paginated = paginateQueryRecords(sorted, pageRequest);
 
   return {
     resource: "devices",
-    page,
-    pageSize,
-    total: sorted.length,
+    page: paginated.pagination.page,
+    pageSize: paginated.pagination.pageSize,
+    total: paginated.pagination.total,
+    pagination: paginated.pagination,
     sort: { field: sortField, direction },
     filters: { query, siteId, role, status },
-    items: paginateRecords(sorted, page, pageSize)
+    items: paginated.items
   };
 }
 
 function listPrefixes(context: InventoryContext, requestUrl: URL): ApiListResponse<Record<string, unknown>> {
-  const query = (requestUrl.searchParams.get("query") ?? "").trim().toLowerCase();
+  const query = normalizeQueryText(requestUrl.searchParams.get("query"));
   const vrfId = requestUrl.searchParams.get("vrfId") ?? "";
   const status = requestUrl.searchParams.get("status") ?? "";
   const sortField = requestUrl.searchParams.get("sort") ?? "cidr";
-  const { page, pageSize, direction } = toPageRequest(requestUrl);
+  const pageRequest = createPaginationRequest(requestUrl.searchParams);
+  const direction = requestUrl.searchParams.get("direction") === "desc" ? "desc" : "asc";
   const utilization = createPrefixUtilizationDirectory(context.state.prefixes, context.state.ipAddresses);
   const filtered = context.state.prefixes
     .map((prefix) => ({
@@ -1014,25 +997,28 @@ function listPrefixes(context: InventoryContext, requestUrl: URL): ApiListRespon
         String(value).toLowerCase().includes(query)
       );
     });
-  const sorted = sortRecords(filtered, sortField, direction);
+  const sorted = sortRecordsByField(filtered, sortField, direction);
+  const paginated = paginateQueryRecords(sorted, pageRequest);
 
   return {
     resource: "prefixes",
-    page,
-    pageSize,
-    total: sorted.length,
+    page: paginated.pagination.page,
+    pageSize: paginated.pagination.pageSize,
+    total: paginated.pagination.total,
+    pagination: paginated.pagination,
     sort: { field: sortField, direction },
     filters: { query, vrfId, status },
-    items: paginateRecords(sorted, page, pageSize)
+    items: paginated.items
   };
 }
 
 function listIpAddresses(context: InventoryContext, requestUrl: URL): ApiListResponse<Record<string, unknown>> {
-  const query = (requestUrl.searchParams.get("query") ?? "").trim().toLowerCase();
+  const query = normalizeQueryText(requestUrl.searchParams.get("query"));
   const prefixId = requestUrl.searchParams.get("prefixId") ?? "";
   const status = requestUrl.searchParams.get("status") ?? "";
   const sortField = requestUrl.searchParams.get("sort") ?? "address";
-  const { page, pageSize, direction } = toPageRequest(requestUrl);
+  const pageRequest = createPaginationRequest(requestUrl.searchParams);
+  const direction = requestUrl.searchParams.get("direction") === "desc" ? "desc" : "asc";
   const filtered = context.state.ipAddresses
     .map((ipAddress) => {
       const interfaceRecord = context.interfaces.find((entry) => entry.id === ipAddress.interfaceId) ?? null;
@@ -1063,16 +1049,18 @@ function listIpAddresses(context: InventoryContext, requestUrl: URL): ApiListRes
         (value) => String(value).toLowerCase().includes(query)
       );
     });
-  const sorted = sortRecords(filtered, sortField, direction);
+  const sorted = sortRecordsByField(filtered, sortField, direction);
+  const paginated = paginateQueryRecords(sorted, pageRequest);
 
   return {
     resource: "ip-addresses",
-    page,
-    pageSize,
-    total: sorted.length,
+    page: paginated.pagination.page,
+    pageSize: paginated.pagination.pageSize,
+    total: paginated.pagination.total,
+    pagination: paginated.pagination,
     sort: { field: sortField, direction },
     filters: { query, prefixId, status },
-    items: paginateRecords(sorted, page, pageSize)
+    items: paginated.items
   };
 }
 
@@ -1082,9 +1070,10 @@ function listReadOnlyResource<TRecord>(
   requestUrl: URL,
   defaultSort = "id"
 ): ApiListResponse<TRecord> {
-  const query = (requestUrl.searchParams.get("query") ?? "").trim().toLowerCase();
+  const query = normalizeQueryText(requestUrl.searchParams.get("query"));
   const sortField = requestUrl.searchParams.get("sort") ?? defaultSort;
-  const { page, pageSize, direction } = toPageRequest(requestUrl);
+  const pageRequest = createPaginationRequest(requestUrl.searchParams);
+  const direction = requestUrl.searchParams.get("direction") === "desc" ? "desc" : "asc";
   const filtered = records.filter((record) => {
     if (!query) {
       return true;
@@ -1094,16 +1083,18 @@ function listReadOnlyResource<TRecord>(
       String(value).toLowerCase().includes(query)
     );
   });
-  const sorted = sortRecords(filtered, sortField, direction);
+  const sorted = sortRecordsByField(filtered as readonly Record<string, unknown>[], sortField, direction);
+  const paginated = paginateQueryRecords(sorted, pageRequest);
 
   return {
     resource,
-    page,
-    pageSize,
-    total: sorted.length,
+    page: paginated.pagination.page,
+    pageSize: paginated.pagination.pageSize,
+    total: paginated.pagination.total,
+    pagination: paginated.pagination,
     sort: { field: sortField, direction },
     filters: { query },
-    items: paginateRecords(sorted, page, pageSize)
+    items: paginated.items as readonly TRecord[]
   };
 }
 

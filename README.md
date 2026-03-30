@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/Super8Four/infralynx-platform/actions/workflows/build.yml/badge.svg?style=flat-square)](https://github.com/Super8Four/infralynx-platform/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.9.0--alpha-E6E1D9?style=flat-square&labelColor=2A3F5F)](VERSION)
+[![Version](https://img.shields.io/badge/version-v0.10.0--alpha-E6E1D9?style=flat-square&labelColor=2A3F5F)](VERSION)
 [![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-supported-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![MS%20SQL%20Server](https://img.shields.io/badge/MS%20SQL%20Server-supported-CC2927?style=flat-square&logo=microsoftsqlserver&logoColor=white)](https://www.microsoft.com/sql-server/)
@@ -24,6 +24,7 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 - `packages/cache-core` for Redis-backed cache abstraction, TTL policy support, and invalidation helpers
 - `packages/data-transfer` for import/export schema contracts, validation, and transfer-state orchestration
 - `packages/db-abstraction` for database capability mapping and migration contracts
+- `packages/db-performance` for shared pagination, query review contracts, and cross-engine index planning
 - `packages/dcim-domain` for physical infrastructure, rack, interface, power, and cabling contracts
 - `packages/domain-core` for core platform contracts and boundaries
 - `packages/event-core` for explicit event records and dispatch contracts
@@ -43,9 +44,9 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 
 ## Versioning
 
-This repository follows Semantic Versioning. The current public version is stored in [VERSION](VERSION) and is `v0.9.0-alpha`.
+This repository follows Semantic Versioning. The current public version is stored in [VERSION](VERSION) and is `v0.10.0-alpha`.
 
-Internal progress tracking may add optional build metadata, for example `v0.3.0-alpha+chunk22.5`, without changing release precedence.
+Internal progress tracking may add optional build metadata, for example `v0.10.0-alpha+chunk30`, without changing release precedence.
 
 ## License
 

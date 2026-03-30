@@ -2,6 +2,23 @@
 
 All notable changes to this repository will be documented in this file.
 
+## [v0.10.0-alpha]
+
+### Added
+- Shared `@infralynx/db-performance` package for deterministic pagination, query review metadata, explain-plan guidance, and cross-engine index definitions.
+- Engine-specific index migration baselines for PostgreSQL, MSSQL, and MariaDB under `migrations/*/0030_query_optimization_indexes.sql`.
+- Search pagination metadata and standardized pagination metadata on inventory list responses.
+
+### Changed
+- Updated the platform release baseline to `v0.10.0-alpha`.
+- Standardized list-query pagination and sort handling on inventory and search endpoints through shared performance helpers.
+
+### Fixed
+- Removed drift between API list endpoints that were previously using ad hoc pagination parsing and unstable same-value sort behavior.
+
+### Removed
+- None.
+
 ## [v0.9.0-alpha]
 
 ### Added

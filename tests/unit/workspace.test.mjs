@@ -27,6 +27,12 @@ import {
 } from "../../packages/audit/dist/index.js";
 import { createCacheStore } from "../../packages/cache-core/dist/index.js";
 import {
+  createPaginationRequest,
+  criticalQueryReviews,
+  paginateRecords,
+  renderIndexMigration
+} from "../../packages/db-performance/dist/index.js";
+import {
   createFileBackedBackupStore,
   executeBackupJobPayload,
   resetFileBackedBackupStore
@@ -435,6 +441,28 @@ test("cache scaffolds remember JSON values and invalidate prefixes deterministic
   assert.equal(loadCount, 1);
   assert.equal(deleted >= 1, true);
   assert.equal(afterDelete, null);
+});
+
+test("db performance scaffolds standardize pagination and engine index migrations", () => {
+  const request = createPaginationRequest(
+    new URLSearchParams("page=2&pageSize=2")
+  );
+  const paginated = paginateRecords(
+    [
+      { id: "device-1", name: "leaf-sw1" },
+      { id: "device-2", name: "leaf-sw2" },
+      { id: "device-3", name: "compute-01" },
+      { id: "device-4", name: "compute-02" }
+    ],
+    request
+  );
+  const postgresSql = renderIndexMigration("postgres");
+
+  assert.equal(request.offset, 2);
+  assert.equal(paginated.items.length, 2);
+  assert.equal(paginated.pagination.totalPages, 2);
+  assert.equal(criticalQueryReviews.some((review) => review.id === "inventory-devices-list"), true);
+  assert.match(postgresSql, /idx_devices_site_role_status_name/);
 });
 
 test("backup scaffolds create archives, validate restores, and roll runtime state safely", () => {
