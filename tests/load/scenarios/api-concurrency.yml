@@ -1,0 +1,32 @@
+config:
+  target: "{{ $processEnvironment.INFRALYNX_BASE_URL }}"
+  phases:
+    - duration: 20
+      arrivalRate: 6
+      rampTo: 12
+      name: baseline-read-ramp
+  defaults:
+    headers:
+      x-infralynx-actor-id: user-platform-admin
+      x-infralynx-role-ids: core-platform-admin
+      x-infralynx-tenant-id: tenant-ops
+  ensure:
+    thresholds:
+      - http.response_time.p95: 900
+      - http.response_time.p99: 1600
+      - http.codes.200: 99
+scenarios:
+  - name: inventory-and-overview-reads
+    flow:
+      - get:
+          url: /api/overview
+      - get:
+          url: /api/search?q=leaf&domain=all&page=1&pageSize=10
+      - get:
+          url: /api/inventory/sites?page=1&pageSize=10&sortField=name&sortDirection=asc
+      - get:
+          url: /api/inventory/devices?page=1&pageSize=10&sortField=name&sortDirection=asc
+      - get:
+          url: /api/inventory/prefixes?page=1&pageSize=10&sortField=cidr&sortDirection=asc
+      - get:
+          url: /api/cache/status

@@ -33,6 +33,10 @@ import {
   renderIndexMigration
 } from "../../packages/db-performance/dist/index.js";
 import {
+  getLoadScenarios,
+  renderScenarioSummary
+} from "../../packages/performance-tests/dist/index.js";
+import {
   createFileBackedBackupStore,
   executeBackupJobPayload,
   resetFileBackedBackupStore
@@ -463,6 +467,17 @@ test("db performance scaffolds standardize pagination and engine index migration
   assert.equal(paginated.pagination.totalPages, 2);
   assert.equal(criticalQueryReviews.some((review) => review.id === "inventory-devices-list"), true);
   assert.match(postgresSql, /idx_devices_site_role_status_name/);
+});
+
+test("performance test scaffolds expose stable load scenarios and thresholds", () => {
+  const smokeScenarios = getLoadScenarios("smoke");
+  const baselineScenarios = getLoadScenarios("baseline");
+  const summary = renderScenarioSummary();
+
+  assert.equal(smokeScenarios.length, 2);
+  assert.equal(baselineScenarios.length, 3);
+  assert.equal(summary.some((scenario) => scenario.id === "job-engine-stress"), true);
+  assert.equal(summary.find((scenario) => scenario.id === "api-concurrency")?.threshold.maxP95Milliseconds, 900);
 });
 
 test("backup scaffolds create archives, validate restores, and roll runtime state safely", () => {

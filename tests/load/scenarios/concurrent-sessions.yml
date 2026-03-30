@@ -1,0 +1,34 @@
+config:
+  target: "{{ $processEnvironment.INFRALYNX_BASE_URL }}"
+  phases:
+    - duration: 18
+      arrivalRate: 4
+      rampTo: 8
+      name: session-ramp
+  ensure:
+    thresholds:
+      - http.response_time.p95: 1000
+      - http.response_time.p99: 1800
+      - http.codes.200: 99
+scenarios:
+  - name: login-refresh-status
+    flow:
+      - post:
+          url: /api/auth/login/local
+          json:
+            username: admin
+            password: ChangeMe!123
+          capture:
+            - json: $.refreshToken
+              as: refreshToken
+      - post:
+          url: /api/auth/refresh
+          json:
+            refreshToken: "{{ refreshToken }}"
+          capture:
+            - json: $.accessToken
+              as: accessToken
+      - get:
+          url: /api/auth/session
+          headers:
+            Authorization: "Bearer {{ accessToken }}"

@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/Super8Four/infralynx-platform/actions/workflows/build.yml/badge.svg?style=flat-square)](https://github.com/Super8Four/infralynx-platform/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.10.0--alpha-E6E1D9?style=flat-square&labelColor=2A3F5F)](VERSION)
+[![Version](https://img.shields.io/badge/version-v0.11.0--alpha-E6E1D9?style=flat-square&labelColor=2A3F5F)](VERSION)
 [![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-supported-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![MS%20SQL%20Server](https://img.shields.io/badge/MS%20SQL%20Server-supported-CC2927?style=flat-square&logo=microsoftsqlserver&logoColor=white)](https://www.microsoft.com/sql-server/)
@@ -34,6 +34,7 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 - `packages/media-core` for media metadata, validation, linking, and access-control contracts
 - `packages/media-storage` for local-first media object storage adapters behind standard upload handling
 - `packages/network-domain` for explicit bindings across interfaces, IPs, VLANs, cables, and prefix hierarchy
+- `packages/performance-tests` for shared load-test thresholds, scenario metadata, and stability validation helpers
 - `packages/scheduler` for recurring schedule records, cron-backed scheduling, and job-trigger orchestration
 - `packages/ui` for shell navigation, tokens, and shared frontend composition contracts
 - `packages/webhooks` for webhook registration, signing, and queue-backed axios delivery orchestration
@@ -44,9 +45,9 @@ InfraLynx application monorepo for product runtime code, shared libraries, test 
 
 ## Versioning
 
-This repository follows Semantic Versioning. The current public version is stored in [VERSION](VERSION) and is `v0.10.0-alpha`.
+This repository follows Semantic Versioning. The current public version is stored in [VERSION](VERSION) and is `v0.11.0-alpha`.
 
-Internal progress tracking may add optional build metadata, for example `v0.10.0-alpha+chunk30`, without changing release precedence.
+Internal progress tracking may add optional build metadata, for example `v0.11.0-alpha+chunk31`, without changing release precedence.
 
 ## License
 

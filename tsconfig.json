@@ -8,6 +8,7 @@
     { "path": "./packages/backup" },
     { "path": "./packages/db-abstraction" },
     { "path": "./packages/db-performance" },
+    { "path": "./packages/performance-tests" },
     { "path": "./packages/dcim-domain" },
     { "path": "./packages/domain-core" },
     { "path": "./packages/ipam-domain" },
