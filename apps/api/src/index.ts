@@ -35,14 +35,19 @@ import {
   validateInterfaceVlanBinding,
   validateTopologyEdge
 } from "../../../packages/network-domain/dist/index.js";
+import { handleAuditApiRequest } from "./audit/index.js";
 import { handleAuthApiRequest } from "./auth/index.js";
+import { handleBackupApiRequest } from "./backup/index.js";
 import { handleExportApiRequest } from "./export/index.js";
 import { handleImportApiRequest } from "./import/index.js";
 import { handleInventoryApiRequest } from "./inventory/index.js";
 import { handleJobsApiRequest } from "./jobs/index.js";
 import { handleMediaApiRequest } from "./media/index.js";
+import { handleRbacApiRequest } from "./rbac/index.js";
 import { handleSchedulerApiRequest } from "./scheduler/index.js";
+import { handleValidationApiRequest } from "./validation/index.js";
 import { handleWebhooksApiRequest } from "./webhooks/index.js";
+import { handleWorkflowsApiRequest } from "./workflows/index.js";
 
 export interface ApiMetricResponse {
   readonly label: string;
@@ -1201,6 +1206,36 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
     return;
   }
 
+  if (requestUrl.pathname.startsWith("/api/audit")) {
+    void handleAuditApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/backup")) {
+    void handleBackupApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/api/import")) {
     void handleImportApiRequest(request, response).then((handled) => {
       if (!handled) {
@@ -1218,6 +1253,21 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
   if (requestUrl.pathname.startsWith("/api/inventory")) {
     void handleInventoryApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/validation")) {
+    void handleValidationApiRequest(request, response).then((handled) => {
       if (!handled) {
         sendJson(response, 404, {
           error: {
@@ -1261,8 +1311,38 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
     return;
   }
 
+  if (requestUrl.pathname.startsWith("/api/rbac")) {
+    void handleRbacApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/api/jobs")) {
     void handleJobsApiRequest(request, response).then((handled) => {
+      if (!handled) {
+        sendJson(response, 404, {
+          error: {
+            code: "not_found",
+            message: `No API route matched ${request.method ?? "GET"} ${requestUrl.pathname}`
+          }
+        });
+      }
+    });
+
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/workflows")) {
+    void handleWorkflowsApiRequest(request, response).then((handled) => {
       if (!handled) {
         sendJson(response, 404, {
           error: {

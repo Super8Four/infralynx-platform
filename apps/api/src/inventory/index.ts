@@ -25,16 +25,23 @@ import {
   validatePrefix,
   validatePrefixHierarchy
 } from "../../../../packages/ipam-domain/dist/index.js";
+import {
+  validateInventorySnapshot,
+  type ValidationConflict,
+  type ValidationWarning
+} from "../../../../packages/validation/dist/index.js";
+import { appendAuditFromRequest } from "../audit/index.js";
 import { emitPlatformEvent } from "../webhooks/index.js";
+import { requireApiPermission } from "../rbac/index.js";
 
-type WritableInventoryResource = "sites" | "racks" | "devices" | "prefixes" | "ip-addresses";
+export type WritableInventoryResource = "sites" | "racks" | "devices" | "prefixes" | "ip-addresses";
 type ReadOnlyInventoryResource =
   | "tenants"
   | "users"
   | "vrfs"
   | "interfaces"
   | "connections";
-type InventoryResource = WritableInventoryResource | ReadOnlyInventoryResource;
+export type InventoryResource = WritableInventoryResource | ReadOnlyInventoryResource;
 
 interface UserSummary {
   readonly id: string;
@@ -64,7 +71,7 @@ interface InventoryState {
   readonly ipAddresses: readonly IpAddress[];
 }
 
-interface InventoryContext {
+export interface InventoryContext {
   readonly tenants: readonly Tenant[];
   readonly users: readonly UserSummary[];
   readonly vrfs: readonly Vrf[];
@@ -115,8 +122,12 @@ interface ValidationFailure {
 interface InventoryMutationResult<TRecord> {
   readonly valid: boolean;
   readonly errors: readonly ValidationFailure[];
+  readonly conflicts: readonly ValidationConflict[];
+  readonly warnings: readonly ValidationWarning[];
   readonly record: TRecord | null;
 }
+
+export type InventoryMutationAction = "create" | "update";
 
 const inventoryRootDirectory = resolve(process.cwd(), "runtime-data/inventory");
 const inventoryStateFilePath = resolve(inventoryRootDirectory, "state.json");
@@ -455,7 +466,40 @@ const writableResources = new Set<WritableInventoryResource>([
   "ip-addresses"
 ]);
 
-function isWritableResource(resource: InventoryResource): resource is WritableInventoryResource {
+export function getInventoryPermissionId(resource: InventoryResource, action: "read" | "write" | "delete") {
+  if (resource === "ip-addresses") {
+    return `ip-address:${action}`;
+  }
+
+  if (resource === "prefixes") {
+    return `prefix:${action}`;
+  }
+
+  if (resource === "vrfs") {
+    return `vrf:${action}`;
+  }
+
+  if (resource === "interfaces") {
+    return `interface:${action}`;
+  }
+
+  if (resource === "connections") {
+    return `connection:${action}`;
+  }
+
+  if (resource === "users") {
+    return `user:${action}`;
+  }
+
+  if (resource === "tenants") {
+    return `tenant:${action}`;
+  }
+
+  const singular = resource.endsWith("s") ? resource.slice(0, -1) : resource;
+  return `${singular}:${action}`;
+}
+
+export function isWritableResource(resource: string): resource is WritableInventoryResource {
   return writableResources.has(resource as WritableInventoryResource);
 }
 
@@ -526,7 +570,7 @@ function withInventoryMutation<TResult>(callback: (state: InventoryState) => TRe
   }
 }
 
-function createInventoryContext(): InventoryContext {
+export function createInventoryContext(): InventoryContext {
   return {
     tenants: referenceTenants,
     users: referenceUsers,
@@ -1188,6 +1232,8 @@ function validateSitePayload(
   return {
     valid: errors.length === 0,
     errors,
+    conflicts: [],
+    warnings: [],
     record: errors.length === 0 ? { id, slug: slug!, name: name!, tenantId } : null
   };
 }
@@ -1219,6 +1265,8 @@ function validateRackPayload(
   return {
     valid: errors.length === 0,
     errors,
+    conflicts: [],
+    warnings: [],
     record: errors.length === 0 ? { id, siteId: siteId!, name: name!, totalUnits: totalUnits! } : null
   };
 }
@@ -1300,6 +1348,8 @@ function validateDevicePayload(
   return {
     valid: errors.length === 0,
     errors,
+    conflicts: [],
+    warnings: [],
     record:
       errors.length === 0
         ? {
@@ -1385,6 +1435,8 @@ function validatePrefixPayload(
   return {
     valid: errors.length === 0,
     errors,
+    conflicts: [],
+    warnings: [],
     record: errors.length === 0 ? candidate : null
   };
 }
@@ -1450,7 +1502,120 @@ function validateIpAddressPayload(
   return {
     valid: errors.length === 0,
     errors,
+    conflicts: [],
+    warnings: [],
     record: errors.length === 0 ? candidate : null
+  };
+}
+
+function buildNextInventoryState(
+  state: InventoryState,
+  resource: WritableInventoryResource,
+  record: Site | Rack | Device | Prefix | IpAddress,
+  operation: InventoryMutationAction,
+  existingId?: string
+) {
+  if (resource === "sites") {
+    return operation === "create"
+      ? { ...state, sites: [...state.sites, record as Site] }
+      : {
+          ...state,
+          sites: state.sites.map((entry) => (entry.id === existingId ? (record as Site) : entry))
+        };
+  }
+
+  if (resource === "racks") {
+    return operation === "create"
+      ? { ...state, racks: [...state.racks, record as Rack] }
+      : {
+          ...state,
+          racks: state.racks.map((entry) => (entry.id === existingId ? (record as Rack) : entry))
+        };
+  }
+
+  if (resource === "devices") {
+    return operation === "create"
+      ? { ...state, devices: [...state.devices, record as Device] }
+      : {
+          ...state,
+          devices: state.devices.map((entry) => (entry.id === existingId ? (record as Device) : entry))
+        };
+  }
+
+  if (resource === "prefixes") {
+    return operation === "create"
+      ? { ...state, prefixes: [...state.prefixes, record as Prefix] }
+      : {
+          ...state,
+          prefixes: state.prefixes.map((entry) => (entry.id === existingId ? (record as Prefix) : entry))
+        };
+  }
+
+  return operation === "create"
+    ? { ...state, ipAddresses: [...state.ipAddresses, record as IpAddress] }
+    : {
+        ...state,
+        ipAddresses: state.ipAddresses.map((entry) => (entry.id === existingId ? (record as IpAddress) : entry))
+      };
+}
+
+function summarizeInventoryWarnings(
+  warnings: readonly ValidationWarning[],
+  recordId: string | null
+) {
+  return warnings.filter((warning) => !warning.recordId || warning.recordId === recordId);
+}
+
+export function validateInventoryMutationPayload(
+  context: InventoryContext,
+  resource: WritableInventoryResource,
+  payload: Record<string, unknown>,
+  options: {
+    readonly operation: InventoryMutationAction;
+    readonly existingId?: string;
+  }
+) {
+  const validation =
+    resource === "sites"
+      ? validateSitePayload(context, payload, options.existingId)
+      : resource === "racks"
+        ? validateRackPayload(context, payload, options.existingId)
+        : resource === "devices"
+          ? validateDevicePayload(context, payload, options.existingId)
+          : resource === "prefixes"
+            ? validatePrefixPayload(context, payload, options.existingId)
+            : validateIpAddressPayload(context, payload, options.existingId);
+
+  if (!validation.valid || !validation.record) {
+    return {
+      validation,
+      nextState: context.state
+    };
+  }
+
+  const nextState = buildNextInventoryState(context.state, resource, validation.record, options.operation, options.existingId);
+  const integrity = validateInventorySnapshot({
+    tenants: context.tenants,
+    vrfs: context.vrfs,
+    sites: nextState.sites,
+    racks: nextState.racks,
+    devices: nextState.devices,
+    interfaces: context.interfaces,
+    connections: context.connections,
+    prefixes: nextState.prefixes,
+    ipAddresses: nextState.ipAddresses
+  });
+  const warnings = summarizeInventoryWarnings(integrity.warnings, validation.record.id);
+  const mergedValidation: InventoryMutationResult<typeof validation.record> = {
+    ...validation,
+    valid: validation.valid && integrity.conflicts.length === 0,
+    conflicts: integrity.conflicts,
+    warnings
+  };
+
+  return {
+    validation: mergedValidation,
+    nextState: mergedValidation.valid ? nextState : context.state
   };
 }
 
@@ -1463,18 +1628,27 @@ function createMutationResponse(
   recordId: string | null
 ) {
   if (!result.valid || !recordId) {
-    sendJson(response, 400, {
+    const hasConflicts = result.conflicts.length > 0;
+
+    sendJson(response, hasConflicts ? 409 : 400, {
       error: {
-        code: "validation_failed",
-        message: "request validation failed",
-        fields: result.errors
+        code: hasConflicts ? "conflict_detected" : "validation_failed",
+        message: hasConflicts ? "conflicting data detected" : "request validation failed",
+        fields: result.errors,
+        conflicts: result.conflicts,
+        warnings: result.warnings
       }
     });
     return;
   }
 
   const detail = getInventoryDetail(context, resource, recordId);
-  sendJson(response, statusCode, detail);
+  sendJson(response, statusCode, {
+    ...detail,
+    validation: {
+      warnings: result.warnings
+    }
+  });
 }
 
 async function handleCreateWritableResource(
@@ -1507,42 +1681,24 @@ async function handleCreateWritableResource(
       state
     };
 
-    const validation =
-      resource === "sites"
-        ? validateSitePayload(context, payload)
-        : resource === "racks"
-          ? validateRackPayload(context, payload)
-          : resource === "devices"
-            ? validateDevicePayload(context, payload)
-            : resource === "prefixes"
-              ? validatePrefixPayload(context, payload)
-              : validateIpAddressPayload(context, payload);
-
-    if (!validation.valid || !validation.record) {
-      return { validation, nextState: state };
-    }
-
-    const nextState =
-      resource === "sites"
-        ? { ...state, sites: [...state.sites, validation.record as Site] }
-        : resource === "racks"
-          ? { ...state, racks: [...state.racks, validation.record as Rack] }
-          : resource === "devices"
-            ? { ...state, devices: [...state.devices, validation.record as Device] }
-            : resource === "prefixes"
-              ? { ...state, prefixes: [...state.prefixes, validation.record as Prefix] }
-              : { ...state, ipAddresses: [...state.ipAddresses, validation.record as IpAddress] };
-
-    return {
-      validation,
-      nextState
-    };
+    return validateInventoryMutationPayload(context, resource, payload, {
+      operation: "create"
+    });
   });
 
   const context = createInventoryContext();
-  if (outcome.validation.record?.id) {
+  if (outcome.validation.valid && outcome.validation.record?.id) {
     emitInventoryEvent(resource, "created", actorId, outcome.validation.record.id, {
       record: outcome.validation.record as unknown as Record<string, unknown>
+    });
+    await appendAuditFromRequest(request, {
+      action: "inventory.record.created",
+      objectType: resource === "ip-addresses" ? "ip-address" : resource.slice(0, -1),
+      objectId: outcome.validation.record.id,
+      metadata: {
+        resource,
+        actorId
+      }
     });
   }
   createMutationResponse(
@@ -1600,56 +1756,18 @@ async function handleUpdateWritableResource(
     if (!existing) {
       return {
         notFound: true,
-        validation: { valid: false, errors: [], record: null },
+        validation: { valid: false, errors: [], conflicts: [], warnings: [], record: null },
         nextState: state
       };
     }
 
     const mergedPayload = { ...existing, ...payload };
-    const validation =
-      resource === "sites"
-        ? validateSitePayload(context, mergedPayload, recordId)
-        : resource === "racks"
-          ? validateRackPayload(context, mergedPayload, recordId)
-          : resource === "devices"
-            ? validateDevicePayload(context, mergedPayload, recordId)
-            : resource === "prefixes"
-              ? validatePrefixPayload(context, mergedPayload, recordId)
-              : validateIpAddressPayload(context, mergedPayload, recordId);
+    const outcome = validateInventoryMutationPayload(context, resource, mergedPayload, {
+      operation: "update",
+      existingId: recordId
+    });
 
-    if (!validation.valid || !validation.record) {
-      return { validation, nextState: state, notFound: false };
-    }
-
-    const nextState =
-      resource === "sites"
-        ? {
-            ...state,
-            sites: state.sites.map((entry) => (entry.id === recordId ? (validation.record as Site) : entry))
-          }
-        : resource === "racks"
-          ? {
-              ...state,
-              racks: state.racks.map((entry) => (entry.id === recordId ? (validation.record as Rack) : entry))
-            }
-          : resource === "devices"
-            ? {
-                ...state,
-                devices: state.devices.map((entry) => (entry.id === recordId ? (validation.record as Device) : entry))
-              }
-            : resource === "prefixes"
-              ? {
-                  ...state,
-                  prefixes: state.prefixes.map((entry) => (entry.id === recordId ? (validation.record as Prefix) : entry))
-                }
-              : {
-                  ...state,
-                  ipAddresses: state.ipAddresses.map((entry) =>
-                    entry.id === recordId ? (validation.record as IpAddress) : entry
-                  )
-                };
-
-    return { validation, nextState, notFound: false };
+    return { ...outcome, notFound: false };
   });
 
   if (outcome.notFound) {
@@ -1663,9 +1781,18 @@ async function handleUpdateWritableResource(
   }
 
   const context = createInventoryContext();
-  if (outcome.validation.record?.id) {
+  if (outcome.validation.valid && outcome.validation.record?.id) {
     emitInventoryEvent(resource, "updated", actorId, outcome.validation.record.id, {
       record: outcome.validation.record as unknown as Record<string, unknown>
+    });
+    await appendAuditFromRequest(request, {
+      action: "inventory.record.updated",
+      objectType: resource === "ip-addresses" ? "ip-address" : resource.slice(0, -1),
+      objectId: outcome.validation.record.id,
+      metadata: {
+        resource,
+        actorId
+      }
     });
   }
   createMutationResponse(
@@ -1799,6 +1926,15 @@ function deleteWritableResource(
     resource,
     deletedId: recordId
   });
+  void appendAuditFromRequest(request, {
+    action: "inventory.record.deleted",
+    objectType: resource === "ip-addresses" ? "ip-address" : resource.slice(0, -1),
+    objectId: recordId,
+    metadata: {
+      resource,
+      actorId
+    }
+  });
   emitInventoryEvent(resource, "deleted", actorId, recordId, {
     deletedId: recordId
   });
@@ -1843,6 +1979,79 @@ function buildPhaseNavigationSummary(context: InventoryContext) {
   };
 }
 
+function getScopeContextForRecord(
+  context: InventoryContext,
+  resource: InventoryResource,
+  recordId: string | null
+) {
+  if (!recordId) {
+    return { tenantId: null, siteId: null, deviceId: null };
+  }
+
+  if (resource === "sites") {
+    const site = context.state.sites.find((entry) => entry.id === recordId) ?? null;
+    const tenantId = site ? context.tenants.find((entry) => entry.id === site.tenantId)?.id ?? null : null;
+    return { tenantId, siteId: site?.id ?? null, deviceId: null };
+  }
+
+  if (resource === "racks") {
+    const rack = context.state.racks.find((entry) => entry.id === recordId) ?? null;
+    const site = rack ? context.state.sites.find((entry) => entry.id === rack.siteId) ?? null : null;
+    return { tenantId: site?.tenantId ?? null, siteId: site?.id ?? null, deviceId: null };
+  }
+
+  if (resource === "devices") {
+    const device = context.state.devices.find((entry) => entry.id === recordId) ?? null;
+    const site = device ? context.state.sites.find((entry) => entry.id === device.siteId) ?? null : null;
+    return { tenantId: site?.tenantId ?? null, siteId: site?.id ?? null, deviceId: device?.id ?? null };
+  }
+
+  if (resource === "prefixes") {
+    const prefix = context.state.prefixes.find((entry) => entry.id === recordId) ?? null;
+    return { tenantId: prefix?.tenantId ?? null, siteId: null, deviceId: null };
+  }
+
+  if (resource === "ip-addresses") {
+    const address = context.state.ipAddresses.find((entry) => entry.id === recordId) ?? null;
+    const deviceId = address?.interfaceId
+      ? context.interfaces.find((entry) => entry.id === address.interfaceId)?.deviceId ?? null
+      : null;
+    const device = deviceId ? context.state.devices.find((entry) => entry.id === deviceId) ?? null : null;
+    const site = device ? context.state.sites.find((entry) => entry.id === device.siteId) ?? null : null;
+    return { tenantId: site?.tenantId ?? null, siteId: site?.id ?? null, deviceId };
+  }
+
+  if (resource === "vrfs") {
+    const vrf = context.vrfs.find((entry) => entry.id === recordId) ?? null;
+    return { tenantId: vrf?.tenantId ?? null, siteId: null, deviceId: null };
+  }
+
+  if (resource === "users") {
+    const user = context.users.find((entry) => entry.id === recordId) ?? null;
+    return { tenantId: user?.tenantId ?? null, siteId: null, deviceId: null };
+  }
+
+  if (resource === "tenants") {
+    return { tenantId: recordId, siteId: null, deviceId: null };
+  }
+
+  if (resource === "interfaces") {
+    const iface = context.interfaces.find((entry) => entry.id === recordId) ?? null;
+    const device = iface ? context.state.devices.find((entry) => entry.id === iface.deviceId) ?? null : null;
+    const site = device ? context.state.sites.find((entry) => entry.id === device.siteId) ?? null : null;
+    return { tenantId: site?.tenantId ?? null, siteId: site?.id ?? null, deviceId: device?.id ?? null };
+  }
+
+  if (resource === "connections") {
+    const connection = context.connections.find((entry) => entry.id === recordId) ?? null;
+    const device = connection ? context.state.devices.find((entry) => entry.id === connection.fromDeviceId) ?? null : null;
+    const site = device ? context.state.sites.find((entry) => entry.id === device.siteId) ?? null : null;
+    return { tenantId: site?.tenantId ?? null, siteId: site?.id ?? null, deviceId: device?.id ?? null };
+  }
+
+  return { tenantId: null, siteId: null, deviceId: null };
+}
+
 export async function handleInventoryApiRequest(
   request: IncomingMessage,
   response: ServerResponse
@@ -1860,9 +2069,16 @@ export async function handleInventoryApiRequest(
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/inventory/navigation") {
+    const identity = await requireApiPermission(request, response, "tenant:read", { tenantId: "tenant-ops" });
+
+    if (!identity) {
+      return true;
+    }
+
     sendJson(response, 200, {
       generatedAt: new Date().toISOString(),
-      sections: buildPhaseNavigationSummary(createInventoryContext())
+      sections: buildPhaseNavigationSummary(createInventoryContext()),
+      actorId: identity.id
     });
     return true;
   }
@@ -1878,7 +2094,15 @@ export async function handleInventoryApiRequest(
     }
 
     if (request.method === "GET") {
-      const detail = getInventoryDetail(createInventoryContext(), resource, recordId);
+      const context = createInventoryContext();
+      const scopeContext = getScopeContextForRecord(context, resource, recordId);
+      const identity = await requireApiPermission(request, response, getInventoryPermissionId(resource, "read"), scopeContext);
+
+      if (!identity) {
+        return true;
+      }
+
+      const detail = getInventoryDetail(context, resource, recordId);
 
       if (!detail) {
         sendJson(response, 404, {
@@ -1905,6 +2129,14 @@ export async function handleInventoryApiRequest(
         return true;
       }
 
+      const context = createInventoryContext();
+      const scopeContext = getScopeContextForRecord(context, resource, recordId);
+      const identity = await requireApiPermission(request, response, getInventoryPermissionId(resource, "write"), scopeContext);
+
+      if (!identity) {
+        return true;
+      }
+
       await handleUpdateWritableResource(
         request,
         response,
@@ -1925,6 +2157,14 @@ export async function handleInventoryApiRequest(
         return true;
       }
 
+      const context = createInventoryContext();
+      const scopeContext = getScopeContextForRecord(context, resource, recordId);
+      const identity = await requireApiPermission(request, response, getInventoryPermissionId(resource, "delete"), scopeContext);
+
+      if (!identity) {
+        return true;
+      }
+
       deleteWritableResource(request, response, resource as WritableInventoryResource, recordId);
       return true;
     }
@@ -1940,6 +2180,12 @@ export async function handleInventoryApiRequest(
     }
 
     if (request.method === "GET") {
+      const identity = await requireApiPermission(request, response, getInventoryPermissionId(resource, "read"), { tenantId: "tenant-ops" });
+
+      if (!identity) {
+        return true;
+      }
+
       sendJson(response, 200, getInventoryList(createInventoryContext(), resource, requestUrl));
       return true;
     }
@@ -1955,6 +2201,12 @@ export async function handleInventoryApiRequest(
         return true;
       }
 
+      const identity = await requireApiPermission(request, response, getInventoryPermissionId(resource, "write"), { tenantId: "tenant-ops" });
+
+      if (!identity) {
+        return true;
+      }
+
       await handleCreateWritableResource(request, response, resource as WritableInventoryResource);
       return true;
     }
@@ -1967,6 +2219,5 @@ export type {
   ApiDetailResponse,
   ApiListResponse,
   ConnectionSummary,
-  InventoryResource,
   UserSummary
 };

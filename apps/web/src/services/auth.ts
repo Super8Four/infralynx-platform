@@ -27,6 +27,20 @@ export interface AuthIdentityResponse {
   readonly displayName?: string;
 }
 
+export interface RbacAssignmentResponse {
+  readonly id: string;
+  readonly userId: string;
+  readonly roleId: string;
+  readonly scopeType: string;
+  readonly scopeId: string | null;
+}
+
+export interface AuthRbacSummaryResponse {
+  readonly identity: AuthIdentityResponse;
+  readonly permissions: readonly string[];
+  readonly assignments: readonly RbacAssignmentResponse[];
+}
+
 export function readLoginResultFromHash(hash: string): StoredAuthSession | null {
   const cleaned = hash.replace(/^#/, "");
 
@@ -157,7 +171,7 @@ export async function startSamlLogin(providerId: string) {
 }
 
 export async function fetchCurrentAuthSession() {
-  return requestJson<{ readonly identity: AuthIdentityResponse }>("/api/auth/session");
+  return requestJson<{ readonly identity: AuthIdentityResponse; readonly rbac: AuthRbacSummaryResponse }>("/api/auth/session");
 }
 
 export async function refreshCurrentAuthSession() {

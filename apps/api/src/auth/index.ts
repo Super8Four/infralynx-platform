@@ -33,6 +33,8 @@ import {
   completeSamlAuthorization,
   testSamlProvider
 } from "../../../../packages/auth-providers/saml/dist/index.js";
+import { appendAuditRecord } from "../audit/index.js";
+import { buildPermissionSummary } from "../rbac/index.js";
 
 const authRootDirectory = resolve(process.cwd(), "runtime-data/auth");
 const authStateFilePath = resolve(authRootDirectory, "state.json");
@@ -189,6 +191,18 @@ async function handleLocalLogin(request: IncomingMessage, response: ServerRespon
       sessionId: session.id,
       message: "local login succeeded"
     });
+    appendAuditRecord({
+      userId: result.user.id,
+      actorType: "user",
+      tenantId: result.user.tenantId,
+      action: "auth.login.local.succeeded",
+      objectType: "login",
+      objectId: session.id,
+      metadata: {
+        providerId: result.provider.id,
+        username: result.user.username
+      }
+    });
 
     sendJson(response, 200, mapSessionResponse(tokens));
   } catch (error) {
@@ -199,6 +213,17 @@ async function handleLocalLogin(request: IncomingMessage, response: ServerRespon
       providerId: "provider-local",
       sessionId: null,
       message: error instanceof Error ? error.message : "local login failed"
+    });
+    appendAuditRecord({
+      userId: null,
+      actorType: "system",
+      tenantId: null,
+      action: "auth.login.local.failed",
+      objectType: "login",
+      objectId: null,
+      metadata: {
+        reason: error instanceof Error ? error.message : "local login failed"
+      }
     });
     sendForbidden(response, "local login failed", 401);
   }
@@ -238,7 +263,10 @@ async function handleLdapLogin(request: IncomingMessage, response: ServerRespons
       providerId,
       externalId: ldapIdentity.externalId,
       username: ldapIdentity.username,
-      displayName: ldapIdentity.displayName
+      displayName: ldapIdentity.displayName,
+      externalRoles: {
+        groups: "groups" in ldapIdentity && Array.isArray(ldapIdentity.groups) ? ldapIdentity.groups : []
+      }
     });
     const session = authRepository.createSessionRecord({
       userId: mapped.user.id,
@@ -258,6 +286,18 @@ async function handleLdapLogin(request: IncomingMessage, response: ServerRespons
       sessionId: session.id,
       message: "ldap login succeeded"
     });
+    appendAuditRecord({
+      userId: mapped.user.id,
+      actorType: "user",
+      tenantId: mapped.user.tenantId,
+      action: "auth.login.ldap.succeeded",
+      objectType: "login",
+      objectId: session.id,
+      metadata: {
+        providerId,
+        externalId: ldapIdentity.externalId
+      }
+    });
 
     sendJson(response, 200, mapSessionResponse(tokens));
   } catch (error) {
@@ -268,6 +308,18 @@ async function handleLdapLogin(request: IncomingMessage, response: ServerRespons
       providerId,
       sessionId: null,
       message: error instanceof Error ? error.message : "ldap login failed"
+    });
+    appendAuditRecord({
+      userId: null,
+      actorType: "system",
+      tenantId: null,
+      action: "auth.login.ldap.failed",
+      objectType: "login",
+      objectId: null,
+      metadata: {
+        providerId,
+        reason: error instanceof Error ? error.message : "ldap login failed"
+      }
     });
     sendForbidden(response, "ldap login failed", 401);
   }
@@ -362,7 +414,11 @@ async function handleOidcCallback(request: IncomingMessage, response: ServerResp
       providerId: transaction.providerId,
       externalId: identity.externalId,
       username: identity.username,
-      displayName: identity.displayName
+      displayName: identity.displayName,
+      externalRoles: {
+        claims: "claims" in identity && identity.claims && typeof identity.claims === "object" ? identity.claims as Record<string, unknown> : {},
+        groups: "groups" in identity && Array.isArray(identity.groups) ? identity.groups : []
+      }
     });
     const session = authRepository.createSessionRecord({
       userId: mapped.user.id,
@@ -373,9 +429,33 @@ async function handleOidcCallback(request: IncomingMessage, response: ServerResp
       displayName: mapped.user.displayName
     });
     const tokens = await issueSessionTokens(authRepository, session, authMasterKeyPath);
+    appendAuditRecord({
+      userId: mapped.user.id,
+      actorType: "user",
+      tenantId: mapped.user.tenantId,
+      action: "auth.login.oidc.succeeded",
+      objectType: "login",
+      objectId: session.id,
+      metadata: {
+        providerId: transaction.providerId,
+        externalId: identity.externalId
+      }
+    });
 
     createRedirectResponse(response, buildLoginSuccessRedirect(transaction.redirectBaseUrl, tokens));
   } catch (error) {
+    appendAuditRecord({
+      userId: null,
+      actorType: "system",
+      tenantId: null,
+      action: "auth.login.oidc.failed",
+      objectType: "login",
+      objectId: transaction.id,
+      metadata: {
+        providerId: transaction.providerId,
+        reason: error instanceof Error ? error.message : "oidc login failed"
+      }
+    });
     createRedirectResponse(
       response,
       buildLoginFailureRedirect(
@@ -463,7 +543,11 @@ async function handleSamlCallback(request: IncomingMessage, response: ServerResp
       providerId: transaction.providerId,
       externalId: identity.externalId,
       username: identity.username,
-      displayName: identity.displayName
+      displayName: identity.displayName,
+      externalRoles: {
+        claims: "claims" in identity && identity.claims && typeof identity.claims === "object" ? identity.claims as Record<string, unknown> : {},
+        groups: "groups" in identity && Array.isArray(identity.groups) ? identity.groups : []
+      }
     });
     const session = authRepository.createSessionRecord({
       userId: mapped.user.id,
@@ -474,9 +558,33 @@ async function handleSamlCallback(request: IncomingMessage, response: ServerResp
       displayName: mapped.user.displayName
     });
     const tokens = await issueSessionTokens(authRepository, session, authMasterKeyPath);
+    appendAuditRecord({
+      userId: mapped.user.id,
+      actorType: "user",
+      tenantId: mapped.user.tenantId,
+      action: "auth.login.saml.succeeded",
+      objectType: "login",
+      objectId: session.id,
+      metadata: {
+        providerId: transaction.providerId,
+        externalId: identity.externalId
+      }
+    });
 
     createRedirectResponse(response, buildLoginSuccessRedirect(transaction.redirectBaseUrl, tokens));
   } catch (error) {
+    appendAuditRecord({
+      userId: null,
+      actorType: "system",
+      tenantId: null,
+      action: "auth.login.saml.failed",
+      objectType: "login",
+      objectId: transaction.id,
+      metadata: {
+        providerId: transaction.providerId,
+        reason: error instanceof Error ? error.message : "saml login failed"
+      }
+    });
     createRedirectResponse(
       response,
       buildLoginFailureRedirect(
@@ -523,6 +631,18 @@ async function handleProviderTest(request: IncomingMessage, response: ServerResp
       providerId,
       sessionId: null,
       message: result.reason
+    });
+    appendAuditRecord({
+      userId: identity.id,
+      actorType: "user",
+      tenantId: identity.tenantId,
+      action: "auth.provider.tested",
+      objectType: "auth-provider",
+      objectId: providerId,
+      metadata: {
+        status: result.valid ? "passed" : "failed",
+        reason: result.reason
+      }
     });
 
     sendJson(response, 200, {
@@ -609,6 +729,19 @@ async function handleSaveProvider(
     sessionId: null,
     message: `${saved.type} provider ${saved.name} saved`
   });
+  appendAuditRecord({
+    userId: identity.id,
+    actorType: "user",
+    tenantId: identity.tenantId,
+    action: providerId ? "auth.provider.updated" : "auth.provider.created",
+    objectType: "auth-provider",
+    objectId: saved.id,
+    metadata: {
+      providerType: saved.type,
+      enabled: saved.enabled,
+      isDefault: saved.isDefault
+    }
+  });
 
   sendJson(response, providerId ? 200 : 201, {
     provider: saved
@@ -644,6 +777,17 @@ async function handleRefresh(request: IncomingMessage, response: ServerResponse)
       updatedAt: new Date().toISOString()
     });
     const tokens = await issueSessionTokens(authRepository, refreshedSession, authMasterKeyPath);
+    appendAuditRecord({
+      userId: refreshedSession.userId,
+      actorType: "user",
+      tenantId: refreshedSession.tenantId,
+      action: "auth.session.refreshed",
+      objectType: "session",
+      objectId: refreshedSession.id,
+      metadata: {
+        providerId: refreshedSession.providerId
+      }
+    });
 
     sendJson(response, 200, mapSessionResponse(tokens));
   } catch (error) {
@@ -660,7 +804,19 @@ async function handleSessionStatus(request: IncomingMessage, response: ServerRes
   }
 
   sendJson(response, 200, {
-    identity
+    identity,
+    rbac: buildPermissionSummary(identity)
+  });
+  appendAuditRecord({
+    userId: identity.id,
+    actorType: "user",
+    tenantId: identity.tenantId,
+    action: "auth.session.viewed",
+    objectType: "session",
+    objectId: identity.id,
+    metadata: {
+      method: identity.method
+    }
   });
 }
 
@@ -679,6 +835,15 @@ async function handleLogout(request: IncomingMessage, response: ServerResponse) 
   }
 
   authRepository.deleteSession(sessionId);
+  appendAuditRecord({
+    userId: null,
+    actorType: "system",
+    tenantId: null,
+    action: "auth.session.logged-out",
+    objectType: "session",
+    objectId: sessionId,
+    metadata: {}
+  });
   sendJson(response, 200, {
     sessionId,
     loggedOut: true
@@ -832,6 +997,15 @@ export async function handleAuthApiRequest(request: IncomingMessage, response: S
         providerId: providerMatch[1],
         sessionId: null,
         message: "provider deleted"
+      });
+      appendAuditRecord({
+        userId: identity.id,
+        actorType: "user",
+        tenantId: identity.tenantId,
+        action: "auth.provider.deleted",
+        objectType: "auth-provider",
+        objectId: providerMatch[1],
+        metadata: {}
       });
 
       sendJson(response, 200, {

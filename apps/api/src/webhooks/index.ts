@@ -22,6 +22,7 @@ import {
   webhookMatchesEvent,
   type WebhookRecord
 } from "../../../../packages/webhooks/dist/index.js";
+import { appendAuditRecord } from "../audit/index.js";
 
 const webhooksRootDirectory = resolve(process.cwd(), "runtime-data/webhooks");
 const eventsRootDirectory = resolve(process.cwd(), "runtime-data/events");
@@ -244,6 +245,18 @@ async function handleCreateWebhook(
       enabled: webhook.enabled
     }
   });
+  appendAuditRecord({
+    userId: context.id,
+    actorType: "user",
+    tenantId: context.tenantId,
+    action: "webhook.created",
+    objectType: "webhook",
+    objectId: webhook.id,
+    metadata: {
+      endpointUrl: webhook.endpointUrl,
+      enabled: webhook.enabled
+    }
+  });
 
   sendJson(response, 201, {
     webhook: mapWebhookResponse(webhook)
@@ -329,6 +342,18 @@ async function handleUpdateWebhook(
       enabled: updated.enabled
     }
   });
+  appendAuditRecord({
+    userId: context.id,
+    actorType: "user",
+    tenantId: context.tenantId,
+    action: "webhook.updated",
+    objectType: "webhook",
+    objectId: updated.id,
+    metadata: {
+      endpointUrl: updated.endpointUrl,
+      enabled: updated.enabled
+    }
+  });
 
   sendJson(response, 200, {
     webhook: mapWebhookResponse(updated)
@@ -362,6 +387,17 @@ function handleDeleteWebhook(
     createdBy: context.id,
     payload: {
       webhookId: existing.id,
+      endpointUrl: existing.endpointUrl
+    }
+  });
+  appendAuditRecord({
+    userId: context.id,
+    actorType: "user",
+    tenantId: context.tenantId,
+    action: "webhook.deleted",
+    objectType: "webhook",
+    objectId: existing.id,
+    metadata: {
       endpointUrl: existing.endpointUrl
     }
   });

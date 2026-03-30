@@ -9,7 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@infralynx/audit": "*",
     "@infralynx/auth": "*",
+    "@infralynx/backup": "*",
     "@infralynx/config": "*",
     "@infralynx/core-domain": "*",
     "@infralynx/data-transfer": "*",

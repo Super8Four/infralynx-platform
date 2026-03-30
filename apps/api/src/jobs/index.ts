@@ -10,6 +10,7 @@ import {
   type JobRecord
 } from "../../../../packages/job-core/dist/index.js";
 import { createFileBackedJobQueueStore } from "../../../../packages/job-queue/dist/index.js";
+import { appendAuditRecord } from "../audit/index.js";
 import { emitPlatformEvent } from "../webhooks/index.js";
 
 interface CreateJobPayload {
@@ -166,6 +167,18 @@ async function handleCreateJob(
     createdBy: context.id,
     payload: {
       jobId: job.id,
+      jobType: job.type,
+      status: job.status
+    }
+  });
+  appendAuditRecord({
+    userId: context.id,
+    actorType: "user",
+    tenantId: context.tenantId,
+    action: "job.created",
+    objectType: "job",
+    objectId: job.id,
+    metadata: {
       jobType: job.type,
       status: job.status
     }
