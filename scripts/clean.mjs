@@ -13,6 +13,8 @@ const paths = [
   "packages/core-domain/tsconfig.tsbuildinfo",
   "packages/auth/dist",
   "packages/auth/tsconfig.tsbuildinfo",
+  "packages/api-contracts/dist",
+  "packages/api-contracts/tsconfig.tsbuildinfo",
   "packages/audit/dist",
   "packages/audit/tsconfig.tsbuildinfo",
   "packages/db-abstraction/dist",

@@ -1,3 +1,5 @@
+import { createVersionedApiPath } from "../../../../packages/api-contracts/dist/index.js";
+
 export class ApiClientError extends Error {
   readonly statusCode: number | null;
   readonly retryable: boolean;
@@ -77,6 +79,7 @@ function createDefaultHeaders(): Headers {
 
 export async function requestJson<T>(path: string, options: RequestJsonOptions = {}): Promise<T> {
   const headers = createDefaultHeaders();
+  const apiPath = createVersionedApiPath(path);
 
   for (const [key, value] of new Headers(options.headers).entries()) {
     headers.set(key, value);
@@ -85,7 +88,7 @@ export async function requestJson<T>(path: string, options: RequestJsonOptions =
   let response: Response;
 
   try {
-    response = await fetch(path, {
+    response = await fetch(apiPath, {
       method: options.method ?? "GET",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),

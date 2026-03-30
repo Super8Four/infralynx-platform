@@ -2,6 +2,38 @@
 
 All notable changes to this repository will be documented in this file.
 
+## [v0.12.0-alpha+chunk31.1]
+
+### Added
+- Enterprise-grade README structure with ecosystem navigation, roadmap progress, support links, and repository quick links.
+
+### Changed
+- Standardized badges, status framing, and repository presentation to align with the full InfraLynx ecosystem.
+- Updated the repository status snapshot to explicitly show current chunk progress and next milestone context.
+
+### Fixed
+- Removed drift between the platform repository presentation and the rest of the InfraLynx public repository surface.
+
+### Removed
+- None.
+
+## [v0.12.0-alpha]
+
+### Added
+- Shared `@infralynx/api-contracts` package for versioned path helpers, Zod schemas, standard API metadata, and error envelopes.
+- `/api/v1` routing layer with centralized query/body validation for core read, auth, inventory, and job entrypoints.
+- Version-aware API response normalization with standardized JSON metadata and legacy deprecation headers on unversioned `/api/*` routes.
+
+### Changed
+- Updated the platform release baseline to `v0.12.0-alpha`.
+- Moved web-client and load-test traffic to `/api/v1/*` while retaining legacy compatibility for existing integrations.
+
+### Fixed
+- Closed the gap where InfraLynx exposed unversioned contracts and inconsistent error payloads across the API surface.
+
+### Removed
+- None.
+
 ## [v0.11.0-alpha]
 
 ### Added
