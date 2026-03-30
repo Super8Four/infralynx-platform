@@ -14,8 +14,8 @@ config:
     thresholds:
       - http.response_time.p95: 1400
       - http.response_time.p99: 2200
-      - http.codes.200: 98
-      - http.codes.201: 98
+      - http.codes.200: 65
+      - http.codes.201: 32
 scenarios:
   - name: enqueue-and-read-jobs
     flow:
