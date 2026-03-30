@@ -2,6 +2,23 @@
 
 All notable changes to this repository will be documented in this file.
 
+## [v0.11.0-alpha]
+
+### Added
+- Shared `@infralynx/performance-tests` package for deterministic load scenario definitions, thresholds, and reporting metadata.
+- Artillery-based load scenarios under `tests/load` covering API concurrency, concurrent session handling, and job enqueue saturation.
+- Executable load-test runner scripts `npm run test:load` and `npm run test:load:smoke` for local and CI-friendly stability validation.
+
+### Changed
+- Updated the platform release baseline to `v0.11.0-alpha`.
+- Extended the repository structure and versioning guidance to include automated load and stability validation.
+
+### Fixed
+- Closed the gap where InfraLynx had no repeatable, repository-owned framework for detecting API and background-processing regressions under concurrent pressure.
+
+### Removed
+- None.
+
 ## [v0.10.0-alpha]
 
 ### Added

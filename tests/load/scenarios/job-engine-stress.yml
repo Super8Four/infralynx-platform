@@ -1,0 +1,31 @@
+config:
+  target: "{{ $processEnvironment.INFRALYNX_BASE_URL }}"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      rampTo: 14
+      name: queue-write-ramp
+  defaults:
+    headers:
+      x-infralynx-actor-id: user-platform-admin
+      x-infralynx-role-ids: core-platform-admin
+      x-infralynx-tenant-id: tenant-ops
+  ensure:
+    thresholds:
+      - http.response_time.p95: 1400
+      - http.response_time.p99: 2200
+      - http.codes.200: 65
+      - http.codes.201: 32
+scenarios:
+  - name: enqueue-and-read-jobs
+    flow:
+      - post:
+          url: /api/jobs
+          json:
+            type: core.echo
+            payload:
+              message: load-test
+      - get:
+          url: /api/jobs
+      - get:
+          url: /api/jobs?status=pending
