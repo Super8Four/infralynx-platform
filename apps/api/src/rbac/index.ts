@@ -17,12 +17,16 @@ import {
 import {
   createAuthRepository,
   requirePermission,
-  resolveRequestAuthIdentity,
   type AuthIdentity,
   type AuthProviderRoleMapping,
   type AuthUserRoleAssignment
 } from "../../../../packages/auth-core/dist/index.js";
 import { appendAuditRecord } from "../audit/index.js";
+import {
+  invalidateRbacCache,
+  resolveCachedAuthIdentity,
+  sendCachedJsonResponse
+} from "../cache/index.js";
 
 const authRootDirectory = resolve(process.cwd(), "runtime-data/auth");
 const authStateFilePath = resolve(authRootDirectory, "state.json");
@@ -61,8 +65,8 @@ function createHeaderIdentity(request: IncomingMessage): AuthIdentity | null {
 }
 
 export async function createRequestIdentity(request: IncomingMessage): Promise<AuthIdentity | null> {
-  const bearerIdentity = await resolveRequestAuthIdentity({
-    authorizationHeader: typeof request.headers["authorization"] === "string" ? request.headers["authorization"] : undefined,
+  const bearerIdentity = await resolveCachedAuthIdentity({
+    request,
     repository: authRepository,
     masterKeyPath: authMasterKeyPath
   }).catch(() => null);
@@ -332,7 +336,10 @@ export async function handleRbacApiRequest(
       return true;
     }
 
-    sendJson(response, 200, createRbacResponse(identity));
+    await sendCachedJsonResponse(request, response, {
+      cacheKind: "rbacSnapshot",
+      keyParts: ["index"]
+    }, async () => createRbacResponse(identity));
     return true;
   }
 
@@ -344,7 +351,10 @@ export async function handleRbacApiRequest(
       return true;
     }
 
-    sendJson(response, 200, buildPermissionSummary(identity));
+    await sendCachedJsonResponse(request, response, {
+      cacheKind: "rbacSummary",
+      keyParts: ["summary"]
+    }, async () => buildPermissionSummary(identity) ?? {});
     return true;
   }
 
@@ -379,6 +389,7 @@ export async function handleRbacApiRequest(
           scopeId: assignment.scopeId
         }
       });
+      await invalidateRbacCache();
       sendJson(response, 200, { assignment, summary: createRbacResponse(identity) });
       return true;
     } catch (error) {
@@ -411,6 +422,7 @@ export async function handleRbacApiRequest(
       objectId: assignmentMatch[1],
       metadata: {}
     });
+    await invalidateRbacCache();
     sendJson(response, 200, { deletedId: assignmentMatch[1], summary: createRbacResponse(identity) });
     return true;
   }
@@ -447,6 +459,7 @@ export async function handleRbacApiRequest(
           claimValue: mapping.claimValue
         }
       });
+      await invalidateRbacCache();
       sendJson(response, 200, { mapping, summary: createRbacResponse(identity) });
       return true;
     } catch (error) {
@@ -479,6 +492,7 @@ export async function handleRbacApiRequest(
       objectId: mappingMatch[1],
       metadata: {}
     });
+    await invalidateRbacCache();
     sendJson(response, 200, { deletedId: mappingMatch[1], summary: createRbacResponse(identity) });
     return true;
   }

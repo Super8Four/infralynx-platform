@@ -25,6 +25,7 @@ import {
   createFileBackedAuditRepository,
   summarizeAuditRecord
 } from "../../packages/audit/dist/index.js";
+import { createCacheStore } from "../../packages/cache-core/dist/index.js";
 import {
   createFileBackedBackupStore,
   executeBackupJobPayload,
@@ -408,6 +409,32 @@ test("audit repository scaffolds persist and query structured records", () => {
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("cache scaffolds remember JSON values and invalidate prefixes deterministically", async () => {
+  const cache = createCacheStore({
+    namespace: `test-cache-${Date.now()}`,
+    defaultTtls: { summary: 30 }
+  });
+  let loadCount = 0;
+  const key = cache.buildKey("summary", "sites");
+  const firstRead = await cache.rememberJson(key, cache.getDefaultTtl("summary", 30), async () => {
+    loadCount += 1;
+    return { count: 3 };
+  });
+  const secondRead = await cache.rememberJson(key, cache.getDefaultTtl("summary", 30), async () => {
+    loadCount += 1;
+    return { count: 5 };
+  });
+  const deleted = await cache.deleteByPrefix("summary");
+  const afterDelete = await cache.getJson(key);
+
+  assert.equal(firstRead.hit, false);
+  assert.equal(secondRead.hit, true);
+  assert.equal(secondRead.value.count, 3);
+  assert.equal(loadCount, 1);
+  assert.equal(deleted >= 1, true);
+  assert.equal(afterDelete, null);
 });
 
 test("backup scaffolds create archives, validate restores, and roll runtime state safely", () => {
