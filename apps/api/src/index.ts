@@ -35,6 +35,11 @@ import {
   validateInterfaceVlanBinding,
   validateTopologyEdge
 } from "../../../packages/network-domain/dist/index.js";
+import {
+  createPaginationRequest,
+  normalizeQueryText,
+  paginateRecords
+} from "../../../packages/db-performance/dist/index.js";
 import { handleAuditApiRequest } from "./audit/index.js";
 import { handleAuthApiRequest } from "./auth/index.js";
 import { handleBackupApiRequest } from "./backup/index.js";
@@ -169,6 +174,17 @@ export interface ApiSearchResponse {
   readonly query: string;
   readonly selectedDomain: SearchDomain | "all";
   readonly totalResults: number;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly pagination: {
+    readonly page: number;
+    readonly pageSize: number;
+    readonly offset: number;
+    readonly total: number;
+    readonly totalPages: number;
+    readonly hasNextPage: boolean;
+    readonly hasPreviousPage: boolean;
+  };
   readonly availableDomains: readonly ApiSearchFilterOptionResponse[];
   readonly groups: readonly ApiSearchResultGroupResponse[];
   readonly guidance: readonly string[];
@@ -403,18 +419,24 @@ function createSearchRecords(): readonly SearchRecord[] {
   ];
 }
 
-function createSearchResponse(queryText: string, domain: SearchDomain | "all"): ApiSearchResponse {
+function createSearchResponse(requestUrl: URL, domain: SearchDomain | "all"): ApiSearchResponse {
   const records = createSearchRecords();
+  const queryText = normalizeQueryText(requestUrl.searchParams.get("q"));
   const query = createSearchQuery(queryText, domain);
+  const pageRequest = createPaginationRequest(requestUrl.searchParams);
   const domainAgnosticMatches = searchRecords(records, createSearchQuery(queryText, "all"));
   const matches = searchRecords(records, query);
-  const groups = groupSearchResults(matches);
+  const paginatedMatches = paginateRecords(matches, pageRequest);
+  const groups = groupSearchResults(paginatedMatches.items);
 
   return {
     generatedAt: new Date().toISOString(),
     query: query.text,
     selectedDomain: domain,
     totalResults: matches.length,
+    page: paginatedMatches.pagination.page,
+    pageSize: paginatedMatches.pagination.pageSize,
+    pagination: paginatedMatches.pagination,
     availableDomains: getSearchDomainOptions().map((option) => ({
       value: option.value,
       label: option.label,
@@ -443,7 +465,8 @@ function createSearchResponse(queryText: string, domain: SearchDomain | "all"): 
     guidance: [
       "Search results are generated from explicit domain records, not direct UI-side joins.",
       "Keyword and partial-match scoring stays deterministic so future indexing can preserve behavior.",
-      "Domain filters narrow the centralized result set without changing the underlying search contract."
+      "Domain filters narrow the centralized result set without changing the underlying search contract.",
+      "Search pagination is standardized to the same bounded offset-limit contract as CRUD list endpoints."
     ]
   };
 }
@@ -1201,8 +1224,13 @@ export function handleApiRequest(request: IncomingMessage, response: ServerRespo
 
     void sendCachedJsonResponse(request, response, {
       cacheKind: "search",
-      keyParts: [requestUrl.searchParams.get("q") ?? "", domain]
-    }, async () => createSearchResponse(requestUrl.searchParams.get("q") ?? "", domain) as unknown as Record<string, unknown>);
+      keyParts: [
+        requestUrl.searchParams.get("q") ?? "",
+        domain,
+        requestUrl.searchParams.get("page") ?? "1",
+        requestUrl.searchParams.get("pageSize") ?? "25"
+      ]
+    }, async () => createSearchResponse(requestUrl, domain) as unknown as Record<string, unknown>);
 
     return;
   }
